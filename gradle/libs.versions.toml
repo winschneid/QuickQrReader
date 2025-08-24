@@ -9,7 +9,7 @@ lifecycleRuntimeKtx = "2.9.2"
 activityCompose = "1.10.1"
 composeBom = "2025.08.00"
 mlkitBarcodeScanning = "17.3.0"
-cameraXVersion = "1.4.0"
+playServicesCodeScanner = "16.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,10 +27,7 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 mlkit-barcodeScanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcodeScanning" }
-androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraXVersion" }
-androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraXVersion" }
-androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraXVersion" }
-androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraXVersion" }
+play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "playServicesCodeScanner" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

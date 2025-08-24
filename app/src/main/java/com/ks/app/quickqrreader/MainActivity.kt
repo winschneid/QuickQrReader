@@ -1,135 +1,117 @@
 package com.ks.app.quickqrreader
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.barcode.BarcodeScanning
+import androidx.compose.ui.unit.dp
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
-    private lateinit var cameraExecutor: ExecutorService
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            startCamera()
-        } else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show()
-            finish()
-        }
-    }
+    private lateinit var scanner: GmsBarcodeScanner
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        cameraExecutor = Executors.newSingleThreadExecutor()
         
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            startCamera()
-        } else {
-            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
-    private fun startCamera() {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+            
+        scanner = GmsBarcodeScanning.getClient(this, options)
+        
+        installModuleIfNeeded()
+        
         setContent {
             QuickQrReaderTheme {
-                QrCodeScanner { qrCode ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(qrCode))
-                    startActivity(intent)
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    QrScannerScreen(
+                        modifier = Modifier.padding(innerPadding),
+                        onScanClick = { startScanning() }
+                    )
                 }
             }
         }
+        
+        // Auto-start scanning on app launch
+        startScanning()
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
+    
+    private fun installModuleIfNeeded() {
+        val moduleInstall = ModuleInstall.getClient(this)
+        val moduleInstallRequest = ModuleInstallRequest.newBuilder()
+            .addApi(GmsBarcodeScanning.getClient(this))
+            .build()
+        
+        moduleInstall.installModules(moduleInstallRequest)
+    }
+    
+    private fun startScanning() {
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                barcode.rawValue?.let { qrCode ->
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(qrCode))
+                    try {
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "Cannot open: $qrCode", Toast.LENGTH_SHORT).show()
+                        // Restart scanning for next QR code
+                        startScanning()
+                    }
+                }
+            }
+            .addOnCanceledListener {
+                // User canceled, restart scanning
+                startScanning()
+            }
+            .addOnFailureListener { exception ->
+                Toast.makeText(this, "Scan failed: ${exception.message}", Toast.LENGTH_SHORT).show()
+                // Restart scanning on failure
+                startScanning()
+            }
     }
 }
 
 @Composable
-fun QrCodeScanner(onQrCodeScanned: (String) -> Unit) {
-    val context = LocalContext.current
-    val lifecycleOwner = context as LifecycleOwner
-    var hasCameraProvider by remember { mutableStateOf(false) }
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { ctx ->
-                val previewView = PreviewView(ctx)
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
-                    }
-                    
-                    val imageAnalyzer = ImageAnalysis.Builder().build().also {
-                        it.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
-                            val mediaImage = imageProxy.image
-                            if (mediaImage != null) {
-                                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                val scanner = BarcodeScanning.getClient()
-                                scanner.process(image)
-                                    .addOnSuccessListener { barcodes ->
-                                        for (barcode in barcodes) {
-                                            barcode.rawValue?.let { qrCode ->
-                                                onQrCodeScanned(qrCode)
-                                                return@addOnSuccessListener
-                                            }
-                                        }
-                                    }
-                                    .addOnCompleteListener {
-                                        imageProxy.close()
-                                    }
-                            } else {
-                                imageProxy.close()
-                            }
-                        }
-                    }
-                    
-                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                    try {
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            imageAnalyzer
-                        )
-                        hasCameraProvider = true
-                    } catch (exc: Exception) {
-                        exc.printStackTrace()
-                    }
-                }, ContextCompat.getMainExecutor(ctx))
-                previewView
-            },
-            modifier = Modifier.fillMaxSize()
+fun QrScannerScreen(
+    modifier: Modifier = Modifier,
+    onScanClick: () -> Unit
+) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Quick QR Reader",
+            modifier = Modifier.padding(16.dp)
         )
+        
+        Button(
+            onClick = onScanClick,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("Scan QR Code")
+        }
     }
 }
