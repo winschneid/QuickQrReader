@@ -55,6 +55,12 @@ class MainActivity : ComponentActivity() {
         startScanning()
     }
     
+    override fun onResume() {
+        super.onResume()
+        // Restart scanning when returning from other apps
+        startScanning()
+    }
+    
     private fun installModuleIfNeeded() {
         val moduleInstall = ModuleInstall.getClient(this)
         val moduleInstallRequest = ModuleInstallRequest.newBuilder()
