@@ -50,14 +50,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        
-        // Auto-start scanning on app launch
-        startScanning()
     }
     
     override fun onResume() {
         super.onResume()
-        // Restart scanning when returning from other apps
+        // Start scanning when app becomes active
         startScanning()
     }
     
