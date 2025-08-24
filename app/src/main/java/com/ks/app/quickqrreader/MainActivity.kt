@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
 
 class MainActivity : ComponentActivity() {
     private lateinit var scanner: GmsBarcodeScanner
+    private var isScanning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +42,13 @@ class MainActivity : ComponentActivity() {
         scanner = GmsBarcodeScanning.getClient(this, options)
         
         installModuleIfNeeded()
+        
+        // Handle back button to exit app
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                finish()
+            }
+        })
         
         setContent {
             QuickQrReaderTheme {
@@ -68,8 +77,12 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startScanning() {
+        if (isScanning) return
+        
+        isScanning = true
         scanner.startScan()
             .addOnSuccessListener { barcode ->
+                isScanning = false
                 barcode.rawValue?.let { qrCode ->
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(qrCode))
                     try {
@@ -82,10 +95,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
             .addOnCanceledListener {
+                isScanning = false
                 // User canceled, restart scanning
                 startScanning()
             }
             .addOnFailureListener { exception ->
+                isScanning = false
                 Toast.makeText(this, "Scan failed: ${exception.message}", Toast.LENGTH_SHORT).show()
                 // Restart scanning on failure
                 startScanning()
