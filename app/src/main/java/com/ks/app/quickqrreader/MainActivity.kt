@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -46,8 +45,7 @@ class MainActivity : ComponentActivity() {
             QuickQrReaderTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     QrScannerScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        onScanClick = { startScanning() }
+                        modifier = Modifier.padding(innerPadding)
                     )
                 }
             }
@@ -94,8 +92,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun QrScannerScreen(
-    modifier: Modifier = Modifier,
-    onScanClick: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
@@ -103,15 +100,13 @@ fun QrScannerScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Quick QR Reader",
+            text = "QR Code Scanner Ready",
             modifier = Modifier.padding(16.dp)
         )
         
-        Button(
-            onClick = onScanClick,
+        Text(
+            text = "Scanning will start automatically...",
             modifier = Modifier.padding(16.dp)
-        ) {
-            Text("Scan QR Code")
-        }
+        )
     }
 }
