@@ -1,6 +1,7 @@
 package com.ks.app.quickqrreader
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -84,14 +85,7 @@ class MainActivity : ComponentActivity() {
             .addOnSuccessListener { barcode ->
                 isScanning = false
                 barcode.rawValue?.let { qrCode ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(qrCode))
-                    try {
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(this, "Cannot open: $qrCode", Toast.LENGTH_SHORT).show()
-                        // Restart scanning for next QR code
-                        startScanning()
-                    }
+                    handleQrCode(qrCode)
                 }
             }
             .addOnCanceledListener {
@@ -105,6 +99,47 @@ class MainActivity : ComponentActivity() {
                 // Restart scanning on failure
                 startScanning()
             }
+    }
+    
+    private fun handleQrCode(qrCode: String) {
+        try {
+            val uri = Uri.parse(qrCode)
+            val intent = when {
+                // Handle LINE URLs specifically
+                qrCode.contains("line.me") -> {
+                    // Try LINE app first
+                    val lineIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                        setPackage("jp.naver.line.android")
+                    }
+                    
+                    // Check if LINE app is installed
+                    if (isAppInstalled("jp.naver.line.android")) {
+                        lineIntent
+                    } else {
+                        // Fallback to browser
+                        Intent(Intent.ACTION_VIEW, uri)
+                    }
+                }
+                // Handle other URLs normally
+                else -> Intent(Intent.ACTION_VIEW, uri)
+            }
+            
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Cannot open: $qrCode", Toast.LENGTH_SHORT).show()
+        }
+        
+        // Always restart scanning for next QR code
+        startScanning()
+    }
+    
+    private fun isAppInstalled(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
     }
 }
 
