@@ -45,6 +45,10 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -55,6 +59,7 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx) // Added ViewModel KTX
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -63,6 +68,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.play.services.code.scanner)
     testImplementation(libs.junit)
+    testImplementation(libs.mockito.core) 
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.kotlinx.coroutines.test) // Added kotlinx-coroutines-test
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

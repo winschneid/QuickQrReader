@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">QuickQrReader</string>
+    <string name="scan_failed">スキャンに失敗しました: %1$s</string>
+    <string name="cannot_open">開けません: %1$s</string>
+    <string name="qr_scanner_ready">QRコードスキャナー準備完了</string>
+    <string name="scanning_starts_automatically">スキャンは自動的に開始されます...</string>
+    <string name="module_install_success">スキャンモジュールの準備ができました。</string>
+    <string name="module_install_failed">スキャンモジュールのインストールに失敗しました: %1$s</string>
+    <string name="module_installing">スキャンモジュールをインストール中です...</string>
+    <string name="scan_no_data">スキャン成功、データなし</string>
+    <string name="scan_canceled">スキャンはキャンセルされました</string>
+    <string name="scan_failed_message">スキャン失敗: %1$s</string>
+    <string name="scanning_in_progress">スキャン中...</string>
 </resources>
