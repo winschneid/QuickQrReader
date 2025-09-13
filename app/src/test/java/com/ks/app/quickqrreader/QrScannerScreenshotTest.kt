@@ -4,6 +4,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.ks.app.quickqrreader.ui.MainUiState
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
 import io.github.takahirom.roborazzi.RoborazziRule
 import org.junit.Rule
@@ -31,7 +32,7 @@ class QrScannerScreenshotTest {
     fun qrScannerScreen_screenshot() {
         composeTestRule.setContent {
             QuickQrReaderTheme {
-                QrScannerScreen()
+                QrScannerScreen(uiState = MainUiState())
             }
         }
         
@@ -44,12 +45,25 @@ class QrScannerScreenshotTest {
     fun qrScannerScreen_darkTheme_screenshot() {
         composeTestRule.setContent {
             QuickQrReaderTheme(darkTheme = true) {
-                QrScannerScreen()
+                QrScannerScreen(uiState = MainUiState())
             }
         }
         
         composeTestRule
             .onRoot()
             .captureRoboImage("QrScannerScreen_Dark")
+    }
+    
+    @Test
+    fun qrScannerScreen_scanning_screenshot() {
+        composeTestRule.setContent {
+            QuickQrReaderTheme {
+                QrScannerScreen(uiState = MainUiState(isScanning = true))
+            }
+        }
+        
+        composeTestRule
+            .onRoot()
+            .captureRoboImage("QrScannerScreen_Scanning")
     }
 }

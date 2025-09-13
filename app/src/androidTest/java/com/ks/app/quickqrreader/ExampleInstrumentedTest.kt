@@ -4,6 +4,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ks.app.quickqrreader.ui.MainUiState
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
 import org.junit.Assert.*
 import org.junit.Rule
@@ -32,7 +33,7 @@ class ExampleInstrumentedTest {
     fun qrScannerScreenDisplaysCorrectTexts() {
         composeTestRule.setContent {
             QuickQrReaderTheme {
-                QrScannerScreen()
+                QrScannerScreen(uiState = MainUiState())
             }
         }
         

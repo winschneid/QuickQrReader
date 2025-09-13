@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.ks.app.quickqrreader"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.ks.app.quickqrreader"
         minSdk = 28
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
