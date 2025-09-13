@@ -48,7 +48,9 @@ android {
     }
 
     testOptions {
-        unitTests.returnDefaultValues = true
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
 }
 
