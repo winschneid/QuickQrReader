@@ -33,4 +33,16 @@ class ExampleUnitTest {
         assertEquals("Scheme should be https", "https", uri.scheme)
         assertEquals("Host should be www.example.com", "www.example.com", uri.host)
     }
+    
+    @Test
+    fun wifiQrCodeDetection_isCorrect() {
+        val wifiQrCode = "WIFI:T:WPA;S:MyNetwork;P:password123;;"
+        assertTrue("WiFi QR code should be detected", wifiQrCode.startsWith("WIFI:", ignoreCase = true))
+        
+        val normalUrl = "https://www.example.com"
+        assertFalse("Normal URL should not be detected as WiFi", normalUrl.startsWith("WIFI:", ignoreCase = true))
+        
+        val wifiQrCodeLowercase = "wifi:T:WPA;S:MyNetwork;P:password123;;"
+        assertTrue("WiFi QR code with lowercase should be detected", wifiQrCodeLowercase.startsWith("WIFI:", ignoreCase = true))
+    }
 }

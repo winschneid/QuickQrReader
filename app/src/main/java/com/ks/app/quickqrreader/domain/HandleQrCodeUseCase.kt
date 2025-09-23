@@ -2,6 +2,7 @@ package com.ks.app.quickqrreader.domain
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import com.ks.app.quickqrreader.data.AppRepository
 
 sealed class QrCodeProcessingResult {
@@ -19,6 +20,12 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
 
     operator fun invoke(qrCode: String): QrCodeProcessingResult {
         return try {
+            // Check for WiFi QR code first
+            if (isWifiQrCode(qrCode)) {
+                val intent = createWifiIntent()
+                return QrCodeProcessingResult.Success(intent)
+            }
+            
             val uri = Uri.parse(qrCode)
             val intent = when (uri.scheme) {
                 "line" -> createAppIntent(uri, lineAppPackageName)
@@ -66,5 +73,13 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
         return Intent(Intent.ACTION_VIEW, uri).apply {
             setPackage(null) // Ensure no package is set for general VIEW intent
         }
+    }
+    
+    private fun isWifiQrCode(qrCode: String): Boolean {
+        return qrCode.startsWith("WIFI:", ignoreCase = true)
+    }
+    
+    private fun createWifiIntent(): Intent {
+        return Intent(Settings.ACTION_WIFI_SETTINGS)
     }
 }
