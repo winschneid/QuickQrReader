@@ -38,20 +38,22 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
 
     private fun createUriIntent(qrCode: String): Intent {
         val uri = Uri.parse(qrCode)
-        return when (uri?.scheme?.lowercase()) {
-            "line" -> createAppIntent(uri!!, lineAppPackageName)
-            "twitter" -> createAppIntent(uri!!, twitterAppPackageName, checkSecondPackage = xAppPackageName)
-            "instagram" -> createAppIntent(uri!!, instagramAppPackageName)
-            null -> Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, qrCode)
-            }
-            else -> when {
+        val scheme = uri?.scheme?.lowercase()
+        return when {
+            scheme == "line" -> createAppIntent(uri!!, lineAppPackageName)
+            scheme == "twitter" -> createAppIntent(uri!!, twitterAppPackageName, checkSecondPackage = xAppPackageName)
+            scheme == "instagram" -> createAppIntent(uri!!, instagramAppPackageName)
+            scheme == "http" || scheme == "https" -> when {
                 qrCode.contains("line.me") -> createAppIntent(uri!!, lineAppPackageName)
                 qrCode.contains("twitter.com") || qrCode.contains("x.com") ->
                     createAppIntent(uri!!, twitterAppPackageName, checkSecondPackage = xAppPackageName)
                 qrCode.contains("instagram.com") -> createAppIntent(uri!!, instagramAppPackageName)
-                else -> Intent(Intent.ACTION_VIEW, uri)
+                else -> Intent(Intent.ACTION_VIEW, uri!!)
+            }
+            scheme != null -> Intent(Intent.ACTION_VIEW, uri!!)  // mailto:, tel:, sms:, geo:, otpauth:, etc.
+            else -> Intent(Intent.ACTION_SEND).apply {            // no scheme = plain text
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, qrCode)
             }
         }
     }
