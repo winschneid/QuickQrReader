@@ -2,6 +2,7 @@ package com.ks.app.quickqrreader.domain
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.ContactsContract
 import com.ks.app.quickqrreader.data.AppRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -19,7 +20,6 @@ class HandleQrCodeUseCaseTest {
 
     private lateinit var handleQrCodeUseCase: HandleQrCodeUseCase
 
-    // Package names used by the UseCase (copied for test clarity)
     private val lineAppPackageName = "jp.naver.line.android"
     private val twitterAppPackageName = "com.twitter.android"
     private val xAppPackageName = "com.x.android"
@@ -60,7 +60,7 @@ class HandleQrCodeUseCaseTest {
         val intent = (result as QrCodeProcessingResult.Success).intent
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(Uri.parse(qrCode), intent.data)
-        assertNull(intent.`package`) // Fallback to browser
+        assertNull(intent.`package`)
     }
 
     @Test
@@ -89,13 +89,12 @@ class HandleQrCodeUseCaseTest {
         val intent = (result as QrCodeProcessingResult.Success).intent
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(Uri.parse(qrCode), intent.data)
-        assertNull(intent.`package`) // Fallback, no specific package for scheme if app not found
+        assertNull(intent.`package`)
     }
 
     @Test
     fun `invoke with generic HTTP URL should return Success with generic intent`() {
         val qrCode = "http://www.google.com"
-        // Assume all specific apps are not installed for this generic test
         mockAppInstallationStatus(lineAppPackageName, false)
         mockAppInstallationStatus(twitterAppPackageName, false)
         mockAppInstallationStatus(xAppPackageName, false)
@@ -110,17 +109,6 @@ class HandleQrCodeUseCaseTest {
         assertNull(intent.`package`)
     }
 
-    @Test
-    fun `invoke with invalid URI string should return Error`() {
-        val invalidQrCode = "invalid_uri_string_without_scheme_or_domain"
-        // No need to mock app installation status as Uri.parse should fail first
-
-        val result = handleQrCodeUseCase(invalidQrCode)
-
-        assertTrue(result is QrCodeProcessingResult.Error)
-        assertEquals(invalidQrCode, (result as QrCodeProcessingResult.Error).originalQrCode)
-    }
-    
     @Test
     fun `invoke with LINE URL when LINE app installed should return Success with LINE intent`() {
         val qrCode = "https://line.me/R/ti/p/@example"
@@ -147,5 +135,71 @@ class HandleQrCodeUseCaseTest {
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(Uri.parse(qrCode), intent.data)
         assertEquals(instagramAppPackageName, intent.`package`)
+    }
+
+    @Test
+    fun `invoke with plain text QR code should return Success with share intent`() {
+        val result = handleQrCodeUseCase("Hello World")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_SEND, intent.action)
+    }
+
+    @Test
+    fun `invoke with vCard QR code should return Success with insert contact intent`() {
+        val qrCode = """
+            BEGIN:VCARD
+            VERSION:3.0
+            FN:John Doe
+            TEL;TYPE=CELL:+1234567890
+            EMAIL:john@example.com
+            ORG:ACME Corp
+            END:VCARD
+        """.trimIndent()
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(ContactsContract.Intents.Insert.ACTION, intent.action)
+    }
+
+    @Test
+    fun `invoke with vCalendar QR code should return Success with insert calendar intent`() {
+        val qrCode = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            SUMMARY:Team Meeting
+            DTSTART:20260310T100000Z
+            DTEND:20260310T110000Z
+            LOCATION:Conference Room
+            END:VEVENT
+            END:VCALENDAR
+        """.trimIndent()
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_INSERT, intent.action)
+    }
+
+    @Test
+    fun `invoke with bare VEVENT QR code should return Success with insert calendar intent`() {
+        val qrCode = """
+            BEGIN:VEVENT
+            SUMMARY:Quick Event
+            DTSTART:20260315T090000Z
+            DTEND:20260315T100000Z
+            END:VEVENT
+        """.trimIndent()
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_INSERT, intent.action)
     }
 }
