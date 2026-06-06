@@ -16,6 +16,17 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!--
+      アダプティブアイコンのセーフゾーン（中央72dp）に対し QR が広がりすぎて、
+      円/角丸マスクで四隅が切れて見えるため、中心(54,54)基準で全体を縮小して余白を確保する。
+      はみ出しが気になる場合は scaleX/scaleY の値を小さくして調整できる。
+    -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.75"
+        android:scaleY="0.75">
+
     <!-- ── Top-left finder pattern ── -->
     <path
         android:fillColor="#FFFFFF"
@@ -91,5 +102,7 @@
             M46,78 h4 v4 h-4 z  M54,78 h4 v4 h-4 z  M62,78 h4 v4 h-4 z
             M50,82 h4 v4 h-4 z  M62,82 h4 v4 h-4 z
             M46,86 h4 v4 h-4 z  M54,86 h4 v4 h-4 z  M62,86 h4 v4 h-4 z" />
+
+    </group>
 
 </vector>
