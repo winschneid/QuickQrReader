@@ -2,9 +2,12 @@ package com.ks.app.quickqrreader.domain
 
 import android.content.Intent
 import android.net.Uri
+import android.net.wifi.WifiNetworkSuggestion
+import android.os.Build
 import android.provider.CalendarContract
 import android.provider.ContactsContract
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import com.ks.app.quickqrreader.data.AppRepository
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -15,6 +18,19 @@ sealed class QrCodeProcessingResult {
     data class Error(val originalQrCode: String) : QrCodeProcessingResult()
 }
 
+sealed class DomainRule {
+    data class OpenInApp(
+        val packageName: String,
+        val fallbackPackage: String? = null
+    ) : DomainRule()
+    object OpenInBrowser : DomainRule()
+}
+
+data class DomainRoutingRule(
+    val matchHost: (String) -> Boolean,
+    val rule: DomainRule
+)
+
 class HandleQrCodeUseCase(private val appRepository: AppRepository) {
 
     private val lineAppPackageName = "jp.naver.line.android"
@@ -22,10 +38,29 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
     private val xAppPackageName = "com.x.android"
     private val instagramAppPackageName = "com.instagram.android"
 
+    private val domainRules = listOf(
+        DomainRoutingRule(
+            matchHost = { it == "line.me" || it.endsWith(".line.me") },
+            rule = DomainRule.OpenInApp(lineAppPackageName)
+        ),
+        DomainRoutingRule(
+            matchHost = { it == "twitter.com" || it.endsWith(".twitter.com") || it == "x.com" || it.endsWith(".x.com") },
+            rule = DomainRule.OpenInApp(twitterAppPackageName, fallbackPackage = xAppPackageName)
+        ),
+        DomainRoutingRule(
+            matchHost = { it == "instagram.com" || it.endsWith(".instagram.com") },
+            rule = DomainRule.OpenInApp(instagramAppPackageName)
+        ),
+        DomainRoutingRule(
+            matchHost = { it == "eplus.jp" || it.endsWith(".eplus.jp") },
+            rule = DomainRule.OpenInBrowser
+        ),
+    )
+
     operator fun invoke(qrCode: String): QrCodeProcessingResult {
         return try {
             val intent = when {
-                isWifiQrCode(qrCode) -> createWifiIntent()
+                isWifiQrCode(qrCode) -> createWifiIntent(qrCode)
                 isVCardQrCode(qrCode) -> createVCardIntent(qrCode)
                 isVCalendarQrCode(qrCode) -> createVCalendarIntent(qrCode)
                 else -> createUriIntent(qrCode)
@@ -41,14 +76,15 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
         val scheme = uri?.scheme?.lowercase()
         return when {
             scheme == "line" -> createAppIntent(uri!!, lineAppPackageName)
-            scheme == "twitter" -> createAppIntent(uri!!, twitterAppPackageName, checkSecondPackage = xAppPackageName)
+            scheme == "twitter" -> createAppIntent(uri!!, twitterAppPackageName, fallbackPackage = xAppPackageName)
             scheme == "instagram" -> createAppIntent(uri!!, instagramAppPackageName)
-            scheme == "http" || scheme == "https" -> when {
-                qrCode.contains("line.me") -> createAppIntent(uri!!, lineAppPackageName)
-                qrCode.contains("twitter.com") || qrCode.contains("x.com") ->
-                    createAppIntent(uri!!, twitterAppPackageName, checkSecondPackage = xAppPackageName)
-                qrCode.contains("instagram.com") -> createAppIntent(uri!!, instagramAppPackageName)
-                else -> Intent(Intent.ACTION_VIEW, uri!!)
+            scheme == "http" || scheme == "https" -> {
+                val host = uri!!.host?.lowercase() ?: ""
+                when (val rule = domainRules.find { it.matchHost(host) }?.rule) {
+                    is DomainRule.OpenInApp -> createAppIntent(uri, rule.packageName, rule.fallbackPackage)
+                    DomainRule.OpenInBrowser -> createBrowserIntent(uri)
+                    null -> Intent(Intent.ACTION_VIEW, uri)
+                }
             }
             scheme != null -> Intent(Intent.ACTION_VIEW, uri!!)  // mailto:, tel:, sms:, geo:, otpauth:, etc.
             else -> Intent(Intent.ACTION_SEND).apply {            // no scheme = plain text
@@ -61,26 +97,74 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
     private fun createAppIntent(
         uri: Uri,
         packageName: String,
-        checkSecondPackage: String? = null
+        fallbackPackage: String? = null
     ): Intent {
-        val appIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-            setPackage(packageName)
+        if (appRepository.isAppInstalled(packageName)) {
+            return Intent(Intent.ACTION_VIEW, uri).apply { setPackage(packageName) }
         }
-        if (appRepository.isAppInstalled(packageName)) return appIntent
-        if (checkSecondPackage != null) {
-            val secondAppIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-                setPackage(checkSecondPackage)
-            }
-            if (appRepository.isAppInstalled(checkSecondPackage)) return secondAppIntent
+        if (fallbackPackage != null && appRepository.isAppInstalled(fallbackPackage)) {
+            return Intent(Intent.ACTION_VIEW, uri).apply { setPackage(fallbackPackage) }
         }
+        return Intent(Intent.ACTION_VIEW, uri)
+    }
+
+    // App Links による自動ルーティングを回避してブラウザで開く
+    private fun createBrowserIntent(uri: Uri): Intent {
         return Intent(Intent.ACTION_VIEW, uri).apply {
-            setPackage(null)
+            appRepository.getDefaultBrowserPackage()?.let { setPackage(it) }
         }
     }
 
     private fun isWifiQrCode(qrCode: String) = qrCode.startsWith("WIFI:", ignoreCase = true)
 
-    private fun createWifiIntent(): Intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+    private fun createWifiIntent(qrCode: String): Intent {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            createWifiNetworkIntent(qrCode)?.let { return it }
+        }
+        return Intent(Settings.ACTION_WIFI_SETTINGS)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun createWifiNetworkIntent(qrCode: String): Intent? {
+        val ssid = extractWifiField(qrCode, "S") ?: return null
+        val password = extractWifiField(qrCode, "P")
+        val type = extractWifiField(qrCode, "T")?.uppercase()
+
+        // WEP is deprecated and uses different key formats; fall back to WiFi settings
+        if (type == "WEP") return null
+
+        val suggestion = try {
+            val builder = WifiNetworkSuggestion.Builder().setSsid(ssid)
+            if (!password.isNullOrEmpty() && type != "NOPASS") {
+                if (type == "WPA3" || type == "SAE") {
+                    builder.setWpa3Passphrase(password)
+                } else {
+                    builder.setWpa2Passphrase(password)
+                }
+            }
+            builder.build()
+        } catch (e: IllegalArgumentException) {
+            // e.g. password too short for WPA2 spec; fall back to WiFi settings
+            return null
+        }
+
+        val intent = Intent("android.net.wifi.action.WIFI_ADD_NETWORKS").apply {
+            putParcelableArrayListExtra("android.net.wifi.extra.WIFI_NETWORK_LIST", arrayListOf(suggestion))
+        }
+        return intent.takeIf { appRepository.canHandleIntent(it) }
+    }
+
+    // Extracts a field from WiFi QR format: WIFI:S:<SSID>;T:<WPA|WEP|nopass>;P:<password>;;
+    private fun extractWifiField(qrCode: String, field: String): String? {
+        return Regex("(?:^|;)$field:((?:[^;\\\\]|\\\\.)*)")
+            .find(qrCode)
+            ?.groupValues?.get(1)
+            ?.replace("\\\\", "\\")
+            ?.replace("\\;", ";")
+            ?.replace("\\,", ",")
+            ?.replace("\\\"", "\"")
+            ?.takeIf { it.isNotEmpty() }
+    }
 
     private fun isVCardQrCode(qrCode: String) =
         qrCode.trimStart().startsWith("BEGIN:VCARD", ignoreCase = true)

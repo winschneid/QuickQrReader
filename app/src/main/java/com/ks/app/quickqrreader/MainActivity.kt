@@ -1,13 +1,12 @@
 package com.ks.app.quickqrreader
 
-import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.viewModels // Required for by viewModels()
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -18,13 +17,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-// import androidx.compose.runtime.LaunchedEffect // Not strictly needed for this version
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.common.moduleinstall.ModuleInstall
@@ -33,16 +31,15 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
-import com.ks.app.quickqrreader.ui.MainViewModel
 import com.ks.app.quickqrreader.ui.MainUiState
+import com.ks.app.quickqrreader.ui.MainViewModel
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
-import kotlinx.coroutines.launch // Added import for launch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
 class MainActivity : ComponentActivity() {
     private lateinit var scanner: GmsBarcodeScanner
-    private val viewModel: MainViewModel by viewModels { 
+    private val viewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application)
     }
 
@@ -56,39 +53,39 @@ class MainActivity : ComponentActivity() {
             .build()
         scanner = GmsBarcodeScanning.getClient(this, options)
 
-        installModuleIfNeeded() // This can also be moved to ViewModel later
+        installModuleIfNeeded()
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                finish()
-            }
-        })
-
-        // Collect events from ViewModel
-        lifecycleScope.launch { // Ensure this launch is from kotlinx.coroutines
-            viewModel.eventFlow
-                .flowWithLifecycle(lifecycle, androidx.lifecycle.Lifecycle.State.STARTED)
-                .onEach { event ->
-                    when (event) {
-                        is MainViewModel.ViewEvent.StartActivity -> {
-                            try {
-                                startActivity(event.intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(this@MainActivity, "Cannot start activity: ${e.message}", Toast.LENGTH_SHORT).show()
-                                startScanning() // Attempt to restart scanning
-                            }
-                        }
-                        is MainViewModel.ViewEvent.ShowToast -> {
-                            Toast.makeText(this@MainActivity, event.message, Toast.LENGTH_SHORT).show()
-                            startScanning() // Attempt to restart scanning after error message
+        viewModel.eventFlow
+            .flowWithLifecycle(lifecycle, androidx.lifecycle.Lifecycle.State.STARTED)
+            .onEach { event ->
+                when (event) {
+                    is MainViewModel.ViewEvent.StartActivity -> {
+                        try {
+                            startActivity(event.intent)
+                        } catch (e: ActivityNotFoundException) {
+                            Toast.makeText(this, getString(R.string.no_app_to_open), Toast.LENGTH_SHORT).show()
+                            startScanning()
+                        } catch (e: Exception) {
+                            Toast.makeText(this, getString(R.string.scan_failed, e.message), Toast.LENGTH_SHORT).show()
+                            startScanning()
                         }
                     }
-                }.launchIn(lifecycleScope) // Changed 'this' to 'lifecycleScope'
-        }
+                    is MainViewModel.ViewEvent.ShowToast -> {
+                        val message = if (event.formatArg != null) {
+                            getString(event.messageRes, event.formatArg)
+                        } else {
+                            getString(event.messageRes)
+                        }
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                        startScanning()
+                    }
+                }
+            }
+            .launchIn(lifecycleScope)
 
         setContent {
             QuickQrReaderTheme {
-                val uiState by viewModel.uiState.collectAsState()
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     QrScannerScreen(
                         modifier = Modifier.padding(innerPadding),
@@ -112,9 +109,7 @@ class MainActivity : ComponentActivity() {
 
         moduleInstall.installModules(moduleInstallRequest)
             .addOnSuccessListener {
-                if (it.areModulesAlreadyInstalled()) {
-                    // Modules are already installed or no update is required.
-                } else {
+                if (!it.areModulesAlreadyInstalled()) {
                     Toast.makeText(this, getString(R.string.module_install_success), Toast.LENGTH_LONG).show()
                 }
             }
@@ -133,7 +128,7 @@ class MainActivity : ComponentActivity() {
             }
             .addOnCanceledListener {
                 viewModel.onScanCanceled()
-                startScanning() // Restart scanning on cancellation
+                startScanning()
             }
             .addOnFailureListener { exception ->
                 viewModel.onScanFailed(exception)
@@ -165,6 +160,5 @@ fun QrScannerScreen(
                 modifier = Modifier.padding(16.dp)
             )
         }
-        // Removed uiState.userMessage?.let block as userMessage is no longer in MainUiState
     }
 }

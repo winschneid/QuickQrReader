@@ -2,19 +2,19 @@ package com.ks.app.quickqrreader.ui
 
 import android.app.Application
 import android.content.Intent
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ks.app.quickqrreader.R
-import com.ks.app.quickqrreader.data.DefaultAppRepository // Needed for Factory
+import com.ks.app.quickqrreader.data.DefaultAppRepository
 import com.ks.app.quickqrreader.domain.HandleQrCodeUseCase
 import com.ks.app.quickqrreader.domain.QrCodeProcessingResult
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,19 +23,21 @@ data class MainUiState(
 )
 
 class MainViewModel(
-    private val application: Application, // Still needed for getString
-    private val handleQrCodeUseCase: HandleQrCodeUseCase // Injected
+    private val handleQrCodeUseCase: HandleQrCodeUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
-    private val _eventFlow = MutableSharedFlow<ViewEvent>()
-    val eventFlow: SharedFlow<ViewEvent> = _eventFlow.asSharedFlow()
+    // Channel を使用してイベントをバッファリング。
+    // SharedFlow(replay=0) だと GMS スキャナー表示中（MainActivity が STOPPED）に
+    // emit されたイベントがコレクター停止中に消えるため。
+    private val _eventChannel = Channel<ViewEvent>(Channel.BUFFERED)
+    val eventFlow = _eventChannel.receiveAsFlow()
 
     sealed class ViewEvent {
         data class StartActivity(val intent: Intent) : ViewEvent()
-        data class ShowToast(val message: String) : ViewEvent()
+        data class ShowToast(@StringRes val messageRes: Int, val formatArg: String? = null) : ViewEvent()
     }
 
     fun onScanStarted() {
@@ -48,7 +50,7 @@ class MainViewModel(
             processQrCode(qrCodeValue)
         } else {
             viewModelScope.launch {
-                _eventFlow.emit(ViewEvent.ShowToast(application.getString(R.string.scan_no_data)))
+                _eventChannel.send(ViewEvent.ShowToast(R.string.scan_no_data))
             }
         }
     }
@@ -56,39 +58,46 @@ class MainViewModel(
     fun onScanCanceled() {
         _uiState.update { it.copy(isScanning = false) }
         viewModelScope.launch {
-            _eventFlow.emit(ViewEvent.ShowToast(application.getString(R.string.scan_canceled)))
+            _eventChannel.send(ViewEvent.ShowToast(R.string.scan_canceled))
         }
     }
 
     fun onScanFailed(exception: Exception) {
         _uiState.update { it.copy(isScanning = false) }
         viewModelScope.launch {
-            _eventFlow.emit(ViewEvent.ShowToast(application.getString(R.string.scan_failed_message, exception.message ?: "Unknown error")))
+            _eventChannel.send(
+                ViewEvent.ShowToast(R.string.scan_failed_message, exception.message ?: "Unknown error")
+            )
         }
     }
 
     private fun processQrCode(qrCode: String) {
         viewModelScope.launch {
-            when (val result = handleQrCodeUseCase(qrCode)) { // Use injected use case
+            when (val result = handleQrCodeUseCase(qrCode)) {
                 is QrCodeProcessingResult.Success -> {
-                    _eventFlow.emit(ViewEvent.StartActivity(result.intent))
+                    _eventChannel.send(ViewEvent.StartActivity(result.intent))
                 }
                 is QrCodeProcessingResult.Error -> {
-                    _eventFlow.emit(ViewEvent.ShowToast(application.getString(R.string.cannot_open, result.originalQrCode)))
+                    _eventChannel.send(ViewEvent.ShowToast(R.string.cannot_open, result.originalQrCode))
                 }
             }
         }
     }
 
+    override fun onCleared() {
+        super.onCleared()
+        _eventChannel.close()
+    }
+
     companion object {
+        // Manual Factory pattern used instead of Hilt, as this app has no other DI requirements.
         fun Factory(application: Application): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
-                    // Create dependencies here for the actual ViewModel instance
                     val appRepository = DefaultAppRepository(application.applicationContext)
                     val handleQrCodeUseCase = HandleQrCodeUseCase(appRepository)
-                    return MainViewModel(application, handleQrCodeUseCase) as T
+                    return MainViewModel(handleQrCodeUseCase) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }

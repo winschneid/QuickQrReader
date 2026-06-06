@@ -38,7 +38,7 @@ android {
                 keyPassword = keystoreProperties.getProperty("keyPassword")
             } else {
                 // Fallback to environment variables
-                storeFile = file("/mnt/c/Users/air_m/AndroidStudioProjects/ks-release-key.jks")
+                storeFile = file("../../quick-qr-keystore.jks")
                 storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
                 keyAlias = System.getenv("KEY_ALIAS") ?: ""
                 keyPassword = System.getenv("KEY_PASSWORD") ?: ""
@@ -80,7 +80,8 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx) // Added ViewModel KTX
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
