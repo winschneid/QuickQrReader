@@ -24,3 +24,11 @@ app/release/
 
 # IDE inspection settings
 .idea/inspectionProfiles/
+
+# Per-developer IDE files (churn-prone, managed locally by Android Studio)
+/.idea/compiler.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/misc.xml
+
+# Claude Code local config
+.claude/
