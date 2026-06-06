@@ -175,6 +175,16 @@ class HandleQrCodeUseCaseTest {
     }
 
     @Test
+    fun `invoke with bare host and port should open as https web intent`() {
+        val result = handleQrCodeUseCase("example.com:8080/path")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("https://example.com:8080/path"), intent.data)
+    }
+
+    @Test
     fun `invoke with surrounding whitespace should trim before processing`() {
         val result = handleQrCodeUseCase("  https://www.google.com\n")
 

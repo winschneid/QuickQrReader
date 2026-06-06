@@ -91,17 +91,25 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
                     createTextShareIntent(qrCode)
                 }
             }
-            else -> {
+            else -> when {
+                // "example.com:8080/path" のような scheme 無し + ポート付きの裸URLは、
+                // ホスト名が scheme として誤認される（"://" を含まず scheme にドットを含む）。
+                // ドメイン形式なら https の Web URL として扱う。
+                !qrCode.contains("://") && scheme.contains('.') && looksLikeWebUrl(qrCode) ->
+                    createWebIntent(Uri.parse("https://$qrCode"))
+
                 // mailto:, tel:, sms:, geo:, market:, otpauth: など。
                 // 処理できるアプリがある場合のみ起動し、無ければ（"メモ: ..." のような
                 // コロンを含む文章を含む）テキストとして共有してフォールバックする。
-                val viewIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
-                }
-                if (appRepository.canHandleIntent(viewIntent)) {
-                    Intent(Intent.ACTION_VIEW, uri)
-                } else {
-                    createTextShareIntent(qrCode)
+                else -> {
+                    val viewIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    }
+                    if (appRepository.canHandleIntent(viewIntent)) {
+                        Intent(Intent.ACTION_VIEW, uri)
+                    } else {
+                        createTextShareIntent(qrCode)
+                    }
                 }
             }
         }

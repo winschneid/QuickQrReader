@@ -4,6 +4,54 @@
 
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
+    <!--
+      Android 11 (API 30) 以降のパッケージ可視性対応。
+      これが無いと isAppInstalled()/canHandleIntent() がインストール済みでも
+      false を返し、専用アプリ起動やスキーム判定が機能しない。
+    -->
+    <queries>
+        <!-- 専用アプリ起動の対象 (LINE / Twitter / X / Instagram) -->
+        <package android:name="jp.naver.line.android" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.x.android" />
+        <package android:name="com.instagram.android" />
+
+        <!-- Web URL の解決・既定ブラウザ取得用 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http" />
+        </intent>
+
+        <!-- よくある非Webスキームの canHandleIntent 判定用 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="sms" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+
+        <!-- Wi-Fi ネットワーク追加 (API 30+) -->
+        <intent>
+            <action android:name="android.net.wifi.action.WIFI_ADD_NETWORKS" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
