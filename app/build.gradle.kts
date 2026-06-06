@@ -57,8 +57,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -68,12 +68,15 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            // Robolectric が合成済みマニフェスト/リソースを参照できるようにする。
+            // （Compose スクリーンショットテストの ComponentActivity 解決やテーマ適用に必要）
+            isIncludeAndroidResources = true
         }
     }
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
 dependencies {

@@ -1,15 +1,20 @@
 package com.ks.app.quickqrreader
 
-import android.content.Intent
 import android.net.Uri
 import org.junit.Test
 import org.junit.Assert.*
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Example local unit test, which will execute on the development machine (host).
  *
  * See [testing documentation](http://d.android.com/tools/testing).
  */
+// uriParsing_isCorrect で Uri.parse の実挙動が必要なため Robolectric 上で実行する。
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
 class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {

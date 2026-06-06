@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.CalendarContract
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.util.Patterns
 import androidx.annotation.RequiresApi
 import com.ks.app.quickqrreader.data.AppRepository
 import java.text.SimpleDateFormat
@@ -58,12 +59,14 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
     )
 
     operator fun invoke(qrCode: String): QrCodeProcessingResult {
+        // QR コードには末尾の改行や前後の空白が含まれることがあるため正規化する
+        val normalized = qrCode.trim()
         return try {
             val intent = when {
-                isWifiQrCode(qrCode) -> createWifiIntent(qrCode)
-                isVCardQrCode(qrCode) -> createVCardIntent(qrCode)
-                isVCalendarQrCode(qrCode) -> createVCalendarIntent(qrCode)
-                else -> createUriIntent(qrCode)
+                isWifiQrCode(normalized) -> createWifiIntent(normalized)
+                isVCardQrCode(normalized) -> createVCardIntent(normalized)
+                isVCalendarQrCode(normalized) -> createVCalendarIntent(normalized)
+                else -> createUriIntent(normalized)
             }
             QrCodeProcessingResult.Success(intent)
         } catch (e: Exception) {
@@ -73,24 +76,74 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
 
     private fun createUriIntent(qrCode: String): Intent {
         val uri = Uri.parse(qrCode)
-        val scheme = uri?.scheme?.lowercase()
-        return when {
-            scheme == "line" -> createAppIntent(uri!!, lineAppPackageName)
-            scheme == "twitter" -> createAppIntent(uri!!, twitterAppPackageName, fallbackPackage = xAppPackageName)
-            scheme == "instagram" -> createAppIntent(uri!!, instagramAppPackageName)
-            scheme == "http" || scheme == "https" -> {
-                val host = uri!!.host?.lowercase() ?: ""
-                when (val rule = domainRules.find { it.matchHost(host) }?.rule) {
-                    is DomainRule.OpenInApp -> createAppIntent(uri, rule.packageName, rule.fallbackPackage)
-                    DomainRule.OpenInBrowser -> createBrowserIntent(uri)
-                    null -> Intent(Intent.ACTION_VIEW, uri)
+        return when (val scheme = uri?.scheme?.lowercase()) {
+            "line" -> createAppIntent(uri!!, lineAppPackageName)
+            "twitter" -> createAppIntent(uri!!, twitterAppPackageName, fallbackPackage = xAppPackageName)
+            "instagram" -> createAppIntent(uri!!, instagramAppPackageName)
+            "http", "https" -> createWebIntent(uri!!)
+            "intent" -> createIntentSchemeIntent(qrCode) ?: createTextShareIntent(qrCode)
+            null -> {
+                // スキームが無い場合でも "www.example.com" のような裸の URL は
+                // ブラウザで開けるよう https:// を補完する。URL でなければテキストとして共有。
+                if (looksLikeWebUrl(qrCode)) {
+                    createWebIntent(Uri.parse("https://$qrCode"))
+                } else {
+                    createTextShareIntent(qrCode)
                 }
             }
-            scheme != null -> Intent(Intent.ACTION_VIEW, uri!!)  // mailto:, tel:, sms:, geo:, otpauth:, etc.
-            else -> Intent(Intent.ACTION_SEND).apply {            // no scheme = plain text
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, qrCode)
+            else -> {
+                // mailto:, tel:, sms:, geo:, market:, otpauth: など。
+                // 処理できるアプリがある場合のみ起動し、無ければ（"メモ: ..." のような
+                // コロンを含む文章を含む）テキストとして共有してフォールバックする。
+                val viewIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    addCategory(Intent.CATEGORY_BROWSABLE)
+                }
+                if (appRepository.canHandleIntent(viewIntent)) {
+                    Intent(Intent.ACTION_VIEW, uri)
+                } else {
+                    createTextShareIntent(qrCode)
+                }
             }
+        }
+    }
+
+    private fun createWebIntent(uri: Uri): Intent {
+        val host = uri.host?.lowercase() ?: ""
+        return when (val rule = domainRules.find { it.matchHost(host) }?.rule) {
+            is DomainRule.OpenInApp -> createAppIntent(uri, rule.packageName, rule.fallbackPackage)
+            DomainRule.OpenInBrowser -> createBrowserIntent(uri)
+            null -> Intent(Intent.ACTION_VIEW, uri)
+        }
+    }
+
+    private fun looksLikeWebUrl(text: String): Boolean {
+        return text.isNotBlank() &&
+                !text.contains(Regex("\\s")) &&
+                Patterns.WEB_URL.matcher(text).matches()
+    }
+
+    private fun createTextShareIntent(text: String): Intent =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+
+    // intent: スキーム URL（Android Intent URI）を解釈する。
+    // 任意コンポーネントの直接起動を防ぐため component/selector を除去し、
+    // ブラウザと同様に BROWSABLE カテゴリに限定する。
+    private fun createIntentSchemeIntent(uri: String): Intent? {
+        return try {
+            Intent.parseUri(uri, Intent.URI_INTENT_SCHEME).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                component = null
+                selector = null
+                // URI 由来の権限付与フラグは安全のため落とす
+                flags = flags and
+                        (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION).inv()
+            }.takeIf { appRepository.canHandleIntent(it) }
+        } catch (e: Exception) {
+            null
         }
     }
 

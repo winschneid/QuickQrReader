@@ -9,10 +9,18 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.Mockito.`when`
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.any
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+// Uri / Intent / Patterns の実挙動が必要なため Robolectric 上で実行する。
+// SDK は src/test/resources/robolectric.properties で一括指定。
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
 class HandleQrCodeUseCaseTest {
 
     @Mock
@@ -144,6 +152,84 @@ class HandleQrCodeUseCaseTest {
         assertTrue(result is QrCodeProcessingResult.Success)
         val intent = (result as QrCodeProcessingResult.Success).intent
         assertEquals(Intent.ACTION_SEND, intent.action)
+    }
+
+    @Test
+    fun `invoke with bare domain URL should open it as https web intent`() {
+        val result = handleQrCodeUseCase("www.example.com")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("https://www.example.com"), intent.data)
+    }
+
+    @Test
+    fun `invoke with bare domain and path should open it as https web intent`() {
+        val result = handleQrCodeUseCase("example.com/path?q=1")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("https://example.com/path?q=1"), intent.data)
+    }
+
+    @Test
+    fun `invoke with surrounding whitespace should trim before processing`() {
+        val result = handleQrCodeUseCase("  https://www.google.com\n")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("https://www.google.com"), intent.data)
+    }
+
+    @Test
+    fun `invoke with text containing a colon should be shared as plain text`() {
+        // "メモ: 牛乳を買う" は scheme=メモ と解釈され得るが、開けるアプリが無いので共有に倒す
+        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(false)
+
+        val result = handleQrCodeUseCase("メモ: 牛乳を買う")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_SEND, intent.action)
+    }
+
+    @Test
+    fun `invoke with mailto URI that an app can handle should return view intent`() {
+        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(true)
+
+        val result = handleQrCodeUseCase("mailto:test@example.com")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("mailto:test@example.com"), intent.data)
+    }
+
+    @Test
+    fun `invoke with eplus URL should force the default browser even without trailing slash`() {
+        `when`(mockAppRepository.getDefaultBrowserPackage()).thenReturn("com.android.chrome")
+
+        val result = handleQrCodeUseCase("https://eplus.jp/sf/detail/0000")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals("com.android.chrome", intent.`package`)
+    }
+
+    @Test
+    fun `invoke with bare eplus domain should also force the browser`() {
+        `when`(mockAppRepository.getDefaultBrowserPackage()).thenReturn("com.android.chrome")
+
+        val result = handleQrCodeUseCase("eplus.jp/sf/detail/0000")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals("com.android.chrome", intent.`package`)
     }
 
     @Test
