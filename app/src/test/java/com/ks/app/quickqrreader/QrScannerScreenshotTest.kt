@@ -61,9 +61,44 @@ class QrScannerScreenshotTest {
                 QrScannerScreen(uiState = MainUiState(isScanning = true))
             }
         }
-        
+
         composeTestRule
             .onRoot()
             .captureRoboImage("QrScannerScreen_Scanning")
+    }
+
+    @Test
+    fun qrScannerScreen_withResultAndHistory_screenshot() {
+        composeTestRule.setContent {
+            QuickQrReaderTheme {
+                QrScannerScreen(
+                    uiState = MainUiState(
+                        lastScannedValue = "https://example.com/some/long/path?query=value",
+                        history = listOf(
+                            "https://example.com/some/long/path?query=value",
+                            "WIFI:S:MyNetwork;T:WPA;P:secret;;",
+                            "Hello World"
+                        )
+                    )
+                )
+            }
+        }
+
+        composeTestRule
+            .onRoot()
+            .captureRoboImage("QrScannerScreen_WithResultAndHistory")
+    }
+
+    @Test
+    fun qrScannerScreen_moduleError_screenshot() {
+        composeTestRule.setContent {
+            QuickQrReaderTheme {
+                QrScannerScreen(uiState = MainUiState(moduleError = "network error"))
+            }
+        }
+
+        composeTestRule
+            .onRoot()
+            .captureRoboImage("QrScannerScreen_ModuleError")
     }
 }

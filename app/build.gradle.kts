@@ -92,6 +92,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.play.services.code.scanner)
+    // 共有された静止画像から QR を読むためのバンドル版 ML Kit（GMS モジュール不要）
+    implementation(libs.mlkit.barcodeScanning)
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core) 
     testImplementation(libs.mockito.kotlin)

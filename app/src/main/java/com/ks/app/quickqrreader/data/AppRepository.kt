@@ -27,7 +27,8 @@ class DefaultAppRepository(private val context: Context) : AppRepository {
     }
 
     override fun getDefaultBrowserPackage(): String? {
-        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://"))
+        // ホスト無しの "https://" だと一部端末で解決に失敗するためダミーホストを付ける
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
             .addCategory(Intent.CATEGORY_BROWSABLE)
         return context.packageManager
             .resolveActivity(browserIntent, PackageManager.MATCH_DEFAULT_ONLY)

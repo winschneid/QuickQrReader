@@ -36,6 +36,8 @@ class HandleQrCodeUseCaseTest {
     @Before
     fun setUp() {
         MockitoAnnotations.openMocks(this)
+        // 生成された Intent は最終的に解決可否チェックを通るため、既定では解決可能とする
+        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(true)
         handleQrCodeUseCase = HandleQrCodeUseCase(mockAppRepository)
     }
 
@@ -197,7 +199,10 @@ class HandleQrCodeUseCaseTest {
     @Test
     fun `invoke with text containing a colon should be shared as plain text`() {
         // "メモ: 牛乳を買う" は scheme=メモ と解釈され得るが、開けるアプリが無いので共有に倒す
-        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(false)
+        // （VIEW は解決不可、SEND は解決可能な端末を想定）
+        `when`(mockAppRepository.canHandleIntent(any())).thenAnswer { invocation ->
+            (invocation.arguments[0] as Intent).action != Intent.ACTION_VIEW
+        }
 
         val result = handleQrCodeUseCase("メモ: 牛乳を買う")
 
@@ -297,5 +302,30 @@ class HandleQrCodeUseCaseTest {
         assertTrue(result is QrCodeProcessingResult.Success)
         val intent = (result as QrCodeProcessingResult.Success).intent
         assertEquals(Intent.ACTION_INSERT, intent.action)
+    }
+
+    @Test
+    fun `invoke with vCard QR code when no contacts app should return Error`() {
+        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(false)
+        val qrCode = """
+            BEGIN:VCARD
+            VERSION:3.0
+            FN:John Doe
+            END:VCARD
+        """.trimIndent()
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Error)
+        assertEquals(qrCode, (result as QrCodeProcessingResult.Error).originalQrCode)
+    }
+
+    @Test
+    fun `invoke with plain text when no share target should return Error`() {
+        `when`(mockAppRepository.canHandleIntent(any())).thenReturn(false)
+
+        val result = handleQrCodeUseCase("Hello World")
+
+        assertTrue(result is QrCodeProcessingResult.Error)
     }
 }

@@ -2,14 +2,18 @@
     <string name="app_name">QuickQrReader</string>
     <string name="scan_failed">スキャンに失敗しました: %1$s</string>
     <string name="cannot_open">開けません: %1$s</string>
-    <string name="qr_scanner_ready">QRコードスキャナー準備完了</string>
-    <string name="scanning_starts_automatically">スキャンは自動的に開始されます...</string>
     <string name="module_install_success">スキャンモジュールの準備ができました。</string>
-    <string name="module_install_failed">スキャンモジュールのインストールに失敗しました: %1$s</string>
     <string name="module_installing">スキャンモジュールをインストール中です...</string>
+    <string name="module_unavailable">スキャンモジュールが利用できません: %1$s</string>
     <string name="scan_no_data">スキャン成功、データなし</string>
-    <string name="scan_canceled">スキャンはキャンセルされました</string>
-    <string name="scan_failed_message">スキャン失敗: %1$s</string>
+    <string name="scan_failed_simple">スキャンに失敗しました。もう一度お試しください。</string>
     <string name="scanning_in_progress">スキャン中...</string>
     <string name="no_app_to_open">このコンテンツを開けるアプリが見つかりません</string>
+    <string name="no_qr_found_in_image">画像からQRコードを読み取れませんでした</string>
+    <string name="tap_to_scan">スキャンを開始</string>
+    <string name="last_scan_result">前回の読み取り結果</string>
+    <string name="copy">コピー</string>
+    <string name="copied_to_clipboard">コピーしました</string>
+    <string name="history_title">履歴</string>
+    <string name="retry">再試行</string>
 </resources>

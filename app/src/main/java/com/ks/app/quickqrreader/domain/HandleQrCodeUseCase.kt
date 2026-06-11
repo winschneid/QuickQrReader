@@ -68,7 +68,13 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
                 isVCalendarQrCode(normalized) -> createVCalendarIntent(normalized)
                 else -> createUriIntent(normalized)
             }
-            QrCodeProcessingResult.Success(intent)
+            // 連絡先・カレンダー・共有先アプリが無い端末では startActivity が
+            // ActivityNotFoundException になるため、最終的な Intent の解決可否をここで確認する
+            if (appRepository.canHandleIntent(intent)) {
+                QrCodeProcessingResult.Success(intent)
+            } else {
+                QrCodeProcessingResult.Error(qrCode)
+            }
         } catch (e: Exception) {
             QrCodeProcessingResult.Error(qrCode)
         }
