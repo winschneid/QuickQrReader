@@ -14,6 +14,14 @@
     <string name="last_scan_result">前回の読み取り結果</string>
     <string name="copy">コピー</string>
     <string name="copied_to_clipboard">コピーしました</string>
+    <string name="serial_copied_to_clipboard">応募シリアルをコピーしました: %1$s</string>
+    <string name="scan_serial_button">文字列をスキャン</string>
+    <string name="serial_scan_hint">「応募シリアル」欄を枠内に写してください</string>
+    <string name="serial_scan_cancel">キャンセル</string>
+    <string name="serial_scan_candidates_label">候補（タップして選択）</string>
+    <string name="serial_scan_value_label">認識結果（違っていれば修正してください）</string>
+    <string name="serial_scan_confirm">コピーする</string>
+    <string name="camera_permission_denied">カメラの権限がないため文字列を読み取れません</string>
     <string name="history_title">履歴</string>
     <string name="retry">再試行</string>
 </resources>

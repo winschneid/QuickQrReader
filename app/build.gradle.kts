@@ -94,6 +94,13 @@ dependencies {
     implementation(libs.play.services.code.scanner)
     // 共有された静止画像から QR を読むためのバンドル版 ML Kit（GMS モジュール不要）
     implementation(libs.mlkit.barcodeScanning)
+    // 共有画像から「応募シリアル」欄の文字列を読み取るためのオプション機能（OCR）
+    implementation(libs.mlkit.textRecognitionJapanese)
+    // カメラのライブ映像から文字列をその場で読み取るためのオプション機能（OCR）
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core) 
     testImplementation(libs.mockito.kotlin)

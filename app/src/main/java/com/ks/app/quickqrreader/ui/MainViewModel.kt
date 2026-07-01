@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 
 data class MainUiState(
     val isScanning: Boolean = false,
+    val isScanningSerial: Boolean = false,
     val lastScannedValue: String? = null,
     val history: List<String> = emptyList(),
     val moduleError: String? = null
@@ -122,6 +123,16 @@ class MainViewModel(
 
     fun onHistoryItemSelected(value: String) {
         handleScannedValue(value)
+    }
+
+    // カメラでのライブ文字列（応募シリアル）スキャンはQRスキャンと完全に独立したオプション機能。
+    // isScanning やイベントフローには一切触れない。
+    fun onSerialScanStarted() {
+        _uiState.update { it.copy(isScanningSerial = true) }
+    }
+
+    fun onSerialScanFinished() {
+        _uiState.update { it.copy(isScanningSerial = false) }
     }
 
     fun onModuleInstallFailed(message: String?) {

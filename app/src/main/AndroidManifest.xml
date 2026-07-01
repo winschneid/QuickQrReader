@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- カメラでライブに「応募シリアル」欄を読み取るオプション機能用（CameraX は GMS のQRスキャナーと異なり自前で権限が必要） -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
       Android 11 (API 30) 以降のパッケージ可視性対応。
