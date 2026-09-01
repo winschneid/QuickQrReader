@@ -248,6 +248,73 @@ class HandleQrCodeUseCaseTest {
     }
 
     @Test
+    fun `invoke with YouTube URL when YouTube app installed should return Success with YouTube intent`() {
+        val youtubeAppPackageName = "com.google.android.youtube"
+        val qrCode = "https://www.youtube.com/watch?v=abc123"
+        mockAppInstallationStatus(youtubeAppPackageName, true)
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse(qrCode), intent.data)
+        assertEquals(youtubeAppPackageName, intent.`package`)
+    }
+
+    @Test
+    fun `invoke with short youtu_be URL when YouTube app installed should return Success with YouTube intent`() {
+        val youtubeAppPackageName = "com.google.android.youtube"
+        val qrCode = "https://youtu.be/abc123"
+        mockAppInstallationStatus(youtubeAppPackageName, true)
+
+        val result = handleQrCodeUseCase(qrCode)
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(youtubeAppPackageName, intent.`package`)
+    }
+
+    @Test
+    fun `invoke with YouTube URL when YouTube app NOT installed should fall back to browser`() {
+        val youtubeAppPackageName = "com.google.android.youtube"
+        mockAppInstallationStatus(youtubeAppPackageName, false)
+        `when`(mockAppRepository.getDefaultBrowserPackage()).thenReturn("com.android.chrome")
+
+        val result = handleQrCodeUseCase("https://www.youtube.com/watch?v=abc123")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals("com.android.chrome", intent.`package`)
+    }
+
+    @Test
+    fun `invoke with Google Drive URL should force the default browser`() {
+        `when`(mockAppRepository.getDefaultBrowserPackage()).thenReturn("com.android.chrome")
+
+        val result = handleQrCodeUseCase("https://drive.google.com/file/d/abc123/view?usp=sharing")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals("com.android.chrome", intent.`package`)
+    }
+
+    @Test
+    fun `invoke with Google Docs URL should force the default browser`() {
+        `when`(mockAppRepository.getDefaultBrowserPackage()).thenReturn("com.android.chrome")
+
+        val result = handleQrCodeUseCase("https://docs.google.com/document/d/abc123/edit")
+
+        assertTrue(result is QrCodeProcessingResult.Success)
+        val intent = (result as QrCodeProcessingResult.Success).intent
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals("com.android.chrome", intent.`package`)
+    }
+
+    @Test
     fun `invoke with vCard QR code should return Success with insert contact intent`() {
         val qrCode = """
             BEGIN:VCARD

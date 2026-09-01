@@ -19,17 +19,14 @@ sealed class QrCodeProcessingResult {
     data class Error(val originalQrCode: String) : QrCodeProcessingResult()
 }
 
-sealed class DomainRule {
-    data class OpenInApp(
-        val packageName: String,
-        val fallbackPackage: String? = null
-    ) : DomainRule()
-    object OpenInBrowser : DomainRule()
-}
-
-data class DomainRoutingRule(
+// ここに列挙したホストだけ、対応アプリがあればアプリで開く（意図的なディープリンク）。
+// 列挙外の http/https ホストはすべて既定ブラウザで開く。
+// 「アプリが横取りして中でコケる」系の回避はブラウザ既定で吸収されるため、
+// ドメインを追加し続ける必要はない。
+data class AppRoutingRule(
     val matchHost: (String) -> Boolean,
-    val rule: DomainRule
+    val packageName: String,
+    val fallbackPackage: String? = null
 )
 
 class HandleQrCodeUseCase(private val appRepository: AppRepository) {
@@ -38,23 +35,28 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
     private val twitterAppPackageName = "com.twitter.android"
     private val xAppPackageName = "com.x.android"
     private val instagramAppPackageName = "com.instagram.android"
+    private val youtubeAppPackageName = "com.google.android.youtube"
 
-    private val domainRules = listOf(
-        DomainRoutingRule(
+    private val appRoutingRules = listOf(
+        AppRoutingRule(
             matchHost = { it == "line.me" || it.endsWith(".line.me") },
-            rule = DomainRule.OpenInApp(lineAppPackageName)
+            packageName = lineAppPackageName
         ),
-        DomainRoutingRule(
+        AppRoutingRule(
             matchHost = { it == "twitter.com" || it.endsWith(".twitter.com") || it == "x.com" || it.endsWith(".x.com") },
-            rule = DomainRule.OpenInApp(twitterAppPackageName, fallbackPackage = xAppPackageName)
+            packageName = twitterAppPackageName,
+            fallbackPackage = xAppPackageName
         ),
-        DomainRoutingRule(
+        AppRoutingRule(
             matchHost = { it == "instagram.com" || it.endsWith(".instagram.com") },
-            rule = DomainRule.OpenInApp(instagramAppPackageName)
+            packageName = instagramAppPackageName
         ),
-        DomainRoutingRule(
-            matchHost = { it == "eplus.jp" || it.endsWith(".eplus.jp") },
-            rule = DomainRule.OpenInBrowser
+        AppRoutingRule(
+            matchHost = {
+                it == "youtube.com" || it.endsWith(".youtube.com") ||
+                        it == "youtu.be" || it.endsWith(".youtu.be")
+            },
+            packageName = youtubeAppPackageName
         ),
     )
 
@@ -121,12 +123,22 @@ class HandleQrCodeUseCase(private val appRepository: AppRepository) {
         }
     }
 
+    // http/https の既定はブラウザ。appRoutingRules に載っていて対応アプリが
+    // 入っているホストだけ、アプリのディープリンクとして開く。
     private fun createWebIntent(uri: Uri): Intent {
         val host = uri.host?.lowercase() ?: ""
-        return when (val rule = domainRules.find { it.matchHost(host) }?.rule) {
-            is DomainRule.OpenInApp -> createAppIntent(uri, rule.packageName, rule.fallbackPackage)
-            DomainRule.OpenInBrowser -> createBrowserIntent(uri)
-            null -> Intent(Intent.ACTION_VIEW, uri)
+        val rule = appRoutingRules.find { it.matchHost(host) }
+        val appPackage = rule?.let {
+            when {
+                appRepository.isAppInstalled(it.packageName) -> it.packageName
+                it.fallbackPackage != null && appRepository.isAppInstalled(it.fallbackPackage) -> it.fallbackPackage
+                else -> null
+            }
+        }
+        return if (appPackage != null) {
+            Intent(Intent.ACTION_VIEW, uri).apply { setPackage(appPackage) }
+        } else {
+            createBrowserIntent(uri)
         }
     }
 
