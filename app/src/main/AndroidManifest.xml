@@ -10,11 +10,12 @@
       false を返し、専用アプリ起動やスキーム判定が機能しない。
     -->
     <queries>
-        <!-- 専用アプリ起動の対象 (LINE / Twitter / X / Instagram) -->
+        <!-- 専用アプリ起動の対象 (LINE / Twitter / X / Instagram / YouTube) -->
         <package android:name="jp.naver.line.android" />
         <package android:name="com.twitter.android" />
         <package android:name="com.x.android" />
         <package android:name="com.instagram.android" />
+        <package android:name="com.google.android.youtube" />
 
         <!-- Web URL の解決・既定ブラウザ取得用 -->
         <intent>
