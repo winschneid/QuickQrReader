@@ -30,11 +30,23 @@ object QrTextDecoder {
     /**
      * @param rawValue ML Kit が解釈できた文字列。解釈できなければ null。
      * @param rawBytes バーコードの生バイト列。端末や読み取り経路によっては null。
+     * @param displayValue ML Kit が「人が読みやすい形」に整えた文字列。最後の手段。
      * @return 表示・処理に使える文字列。どの文字コードでも妥当に解釈できなければ null。
      */
-    fun decode(rawValue: String?, rawBytes: ByteArray?): String? {
+    fun decode(rawValue: String?, rawBytes: ByteArray?, displayValue: String? = null): String? {
         if (!rawValue.isNullOrEmpty()) return rawValue
 
+        decodeFromBytes(rawBytes)?.let { return it }
+
+        // 最後の手段。displayValue は元の内容の一部が欠けていることがある
+        // （ML Kit の例: rawValue が "MEBKM:TITLE:Google;URL://www.google.com;;" のとき
+        // displayValue は "//www.google.com" だけ）。Wi-Fi や vCard のような構造化された
+        // QR では欠けた文字列を掴むことになるので、rawBytes から復元できなかったときだけ使う。
+        // それでも「データがありません」で何も返さないよりはユーザーに情報が残る。
+        return displayValue?.takeIf { it.isNotEmpty() && isPlausibleText(it) }
+    }
+
+    private fun decodeFromBytes(rawBytes: ByteArray?): String? {
         val bytes = rawBytes?.takeIf { it.isNotEmpty() } ?: return null
         return fallbackCharsets
             .asSequence()
