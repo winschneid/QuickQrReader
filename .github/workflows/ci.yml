@@ -35,8 +35,13 @@ jobs:
       - name: Gradle を用意
         uses: gradle/actions/setup-gradle@v4
 
-      - name: ユニットテスト
-        run: ./gradlew :app:testDebugUnitTest --console=plain
+      # ユニットテストとスクリーンショット検証を1回の呼び出しでまとめる。
+      # verifyRoborazziDebug はテストタスクに依存するため、別々に実行すると
+      # テストが2回走って無駄になる。
+      - name: ユニットテストとスクリーンショット検証
+        run: >-
+          ./gradlew :app:testDebugUnitTest :app:verifyRoborazziDebug
+          -Proborazzi.test.verify=true --console=plain
 
       - name: debug ビルド
         run: ./gradlew :app:assembleDebug --console=plain
@@ -50,11 +55,23 @@ jobs:
           path: app/build/reports/tests/testDebugUnitTest/
           if-no-files-found: ignore
 
+      # スクリーンショットが一致しなかったときの比較画像。
+      # 期待値・実際・差分が並んだ画像が出るので、どこが変わったか目で分かる。
+      - name: スクリーンショットの差分を保存
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diff
+          path: |
+            app/build/outputs/roborazzi/
+            app/build/reports/roborazzi/
+          if-no-files-found: ignore
+
 # release ビルドはここでは行わない。署名鍵とパスワードが必要で、
 # それらをリポジトリのシークレットに置く判断はまだしていないため。
 #
-# スクリーンショット（Roborazzi）の検証もまだ入れていない。
-# 参照画像をコミットして verifyRoborazziDebug を回せば UI の意図しない変化を
-# 検出できるが、画像は OS やフォント、グラフィックス実装の差で変わり得る。
-# ローカル（Windows）で撮った画像が CI（Linux）で一致する保証がないので、
-# まず CI 上で記録し、それが安定して再現するか確かめてからにする。
+# 参照画像 app/src/test/screenshots/*.png は CI と同じ内容であることを確認済み。
+# Windows で記録したものと ubuntu-latest で記録したものがバイト単位で一致し、
+# CI 上で2回記録しても同じだった（PR #10）。
+# 画像を更新するときは次で撮り直してコミットする:
+#   ./gradlew :app:recordRoborazziDebug -Proborazzi.test.record=true --rerun-tasks
