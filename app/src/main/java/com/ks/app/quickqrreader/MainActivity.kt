@@ -216,7 +216,7 @@ class MainActivity : ComponentActivity() {
         viewModel.onScanStarted()
         scanner.startScan()
             .addOnSuccessListener { barcode ->
-                viewModel.onScanSuccess(QrTextDecoder.decode(barcode.rawValue, barcode.rawBytes))
+                viewModel.onScanSuccess(QrTextDecoder.decode(barcode.rawValue, barcode.rawBytes, barcode.displayValue))
             }
             .addOnCanceledListener {
                 viewModel.onScanCanceled()
@@ -257,7 +257,7 @@ class MainActivity : ComponentActivity() {
         imageScanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
                 val value = barcodes.firstNotNullOfOrNull {
-                    QrTextDecoder.decode(it.rawValue, it.rawBytes)
+                    QrTextDecoder.decode(it.rawValue, it.rawBytes, it.displayValue)
                 }
                 if (value != null) {
                     viewModel.onScanSuccess(value)
