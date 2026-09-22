@@ -47,10 +47,16 @@ class MainViewModel(
     private val _eventChannel = Channel<ViewEvent>(Channel.BUFFERED)
     val eventFlow = _eventChannel.receiveAsFlow()
 
-    // onResume での自動スキャン許可フラグ。
-    // 初回起動時と、外部アプリ起動から戻ってきたときだけ true。
-    // スキャン成功直後の onResume（GMS スキャナーが閉じた瞬間）はここが false のため
-    // 自動再スキャンが走らず、ブラウザ起動とスキャナー再表示が競合しない。
+    // onResume での自動スキャン許可フラグ。ViewModel の生存期間で一度だけ true になる。
+    //
+    // 自動でスキャナーを開くのはコールドスタート時のみ。以降の onResume
+    // （外部アプリから戻った / ホームから戻った / 画面回転）では開かない。
+    // ・スキャン成功直後の onResume（GMS スキャナーが閉じた瞬間）に再スキャンが走ると
+    //   起動したブラウザの上にスキャナーが被さる。
+    // ・外部アプリから戻るたびに再スキャンすると、読み取り結果や履歴を確認する間もなく
+    //   カメラが開き、ユーザーが待機画面に留まれない。
+    // ・共有画像から起動した場合はカメラを一度も使わないため、戻ってきて開くのは不自然。
+    // 次のスキャンは待機画面のボタンからユーザーが明示的に開始する。
     private var autoScanOnResume = true
 
     sealed class ViewEvent {
@@ -72,9 +78,16 @@ class MainViewModel(
         return shouldScan
     }
 
-    /** StartActivity が成功したら、外部アプリから戻った次の onResume で再スキャンする。 */
-    fun onLaunchSucceeded() {
-        autoScanOnResume = true
+    /**
+     * 読み取り結果から外部アプリ（ブラウザ等）の起動に成功した。
+     *
+     * ここで自動スキャンを再武装しないことが重要。戻ってきた onResume でカメラが開くと、
+     * ユーザーは読み取り結果も履歴も確認できないまま次のスキャンに放り込まれる。
+     * 通常フローでは onResume が先に消費済みなので実質的な no-op だが、
+     * 「起動後に自動スキャンへ戻らない」という契約を呼び出し側と共有するために明示する。
+     */
+    fun onExternalAppLaunched() {
+        autoScanOnResume = false
     }
 
     fun onScanStarted() {
