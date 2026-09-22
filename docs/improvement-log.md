@@ -5,6 +5,40 @@
 
 ---
 
+## サイクル 7 — CI を入れる (2026-09-22)
+
+**動機**: 6サイクル回す間、テストの実行は毎回手動だった。誰かが覚えている間しか機能しない。
+
+**変更**: `.github/workflows/ci.yml` を追加。PR と master への push で
+`:app:testDebugUnitTest` と `:app:assembleDebug` を実行し、テストレポートを
+artifact として保存する（成否によらず。落ちた原因をローカル再現なしで追えるように）。
+
+**詰まった点**: 最初 `android-actions/setup-android@v3` を入れたが、
+このアクションは廃止済みの `tools` パッケージを `sdkmanager` で入れようとして
+exit 1 で落ちる（`Warning: Failed to find package 'tools'`）。
+ubuntu-latest には Android SDK が同梱され `ANDROID_HOME` も設定済みなので、
+このアクションは不要だった。外したら通った。`compileSdk 36` は AGP が自動取得している。
+
+**検証**: ワークフローはローカルで実行できないため、実際に CI を回して確認した。
+2回目の実行で成功。CI 上のテストレポートで **91件・失敗0** を確認済み。
+所要時間は約3分40秒（うち Gradle デーモン起動とテストで 2分29秒、debug ビルドで 1分1秒）。
+
+**入れなかったもの**:
+- **release ビルド** — 署名鍵とパスワードが必要で、それらをリポジトリのシークレットに
+  置く判断はまだしていない。
+- **Roborazzi のスクリーンショット検証** — サイクル6で有効性は確認できたが、画像は
+  OS・フォント・グラフィックス実装の差で変わり得る。ローカル（Windows）で撮った画像が
+  CI（Linux）で一致する保証がなく、参照画像をコミットしていきなり `verifyRoborazziDebug`
+  を有効にすると CI が最初から赤くなる可能性が高い。先に CI 上で記録して
+  安定再現するか確かめる必要がある。
+
+**残っている警告**: `actions/checkout@v4` `actions/setup-java@v4` `actions/upload-artifact@v4`
+が Node.js 20 を対象としており非推奨の警告が出る（強制的に Node 24 で実行されるため動作はする）。
+特に setup-java は v5 への移行を明示的に案内されている。今回は失敗の原因切り分けを
+優先して据え置いた。
+
+---
+
 ## サイクル 6 — MainActivity から Compose 画面を切り出す (2026-09-22)
 
 **動機**: `MainActivity` が 745 行あり、Activity のライフサイクル制御・共有画像の処理・
@@ -301,8 +335,17 @@ URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の�
   `HandleQrCodeUseCase.looksLikeWebUrl()` の判定で、日本語を含むパスやIDNドメインの
   スキーム無し URL がテキスト共有に落ちる。
 
-- **CI が無い**（優先度: 低）
-  GitHub Actions で `:app:testDebugUnitTest` を回せば、このループの検証を PR 上でも担保できる。
-  あわせて、Roborazzi の参照画像をコミットして `verifyRoborazziDebug` を CI で回せば、
-  UI の意図しない変化を PR 上で検出できる。**今は参照画像を誰も検証していない**ので、
-  サイクル6でやったような比較は毎回手動で撮り直す必要がある。
+- ~~**CI が無い**~~ → サイクル7で導入。以下が積み残し。
+
+- **CI でスクリーンショットを検証する**（優先度: 中）
+  Roborazzi の参照画像をコミットして `verifyRoborazziDebug` を CI で回せば、
+  UI の意図しない変化を PR 上で検出できる。サイクル6でやったような比較を
+  毎回手動で撮り直す必要がなくなる。
+  **着手手順**: いきなり参照画像をコミットしない。まず CI 上で
+  `recordRoborazziDebug` を回して artifact として取得し、
+  (1) ローカル（Windows）で撮った画像と一致するか、(2) CI で2回撮って同じになるか
+  を確かめる。不一致なら参照画像は CI で記録したものを使う。
+
+- **GitHub Actions の非推奨バージョン**（優先度: 低）
+  `actions/checkout@v4` `actions/setup-java@v4` `actions/upload-artifact@v4` が
+  Node.js 20 対象で警告が出る。動作はするが、setup-java は v5 への移行を案内されている。
