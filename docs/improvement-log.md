@@ -5,6 +5,50 @@
 
 ---
 
+## サイクル 6 — MainActivity から Compose 画面を切り出す (2026-09-22)
+
+**動機**: `MainActivity` が 745 行あり、Activity のライフサイクル制御・共有画像の処理・
+シリアル OCR・Compose 画面がすべて同居していた。
+
+**変更**: Composable をパッケージ `ui` の2ファイルに移した。**挙動の変更は一切無い。**
+
+| ファイル | 行数 | 中身 |
+|---|---|---|
+| `MainActivity.kt` | 745 → 282 | Activity のみ（ライフサイクル、Intent、スキャナー、クリップボード） |
+| `ui/QrScannerScreen.kt` | 241 | `QrScannerScreen` と `ScanningContent` / `ModuleErrorContent` / `IdleContent` |
+| `ui/SerialCameraScreen.kt` | 261 | `SerialCameraScreen` / `SerialCandidatePanel` / `bindSerialScanUseCases` |
+
+コード自体は1文字も書き換えていない。唯一の例外は `SerialCameraScreen` の
+`private` → `internal`（別ファイルの `QrScannerScreen` から呼ぶため必須）。
+
+**検証**: リファクタなので「変わっていないこと」を2通りで確認した。
+
+1. **スクリーンショット比較**: 分割前（master）で Roborazzi の画像5枚を記録し、
+   分割後に撮り直してバイト比較。5枚すべて一致。
+2. **移動したコードの差分比較**: 元の該当行と新ファイルの該当部分を
+   改行コード正規化のうえ `diff`。上記の `internal` 化以外に差分なし。
+
+ユニットテスト 91 件すべて成功、`assembleDebug` も成功。
+
+**ついでに直したもの**: `captureRoboImage("QrScannerScreen")` の引数はモジュール相対パスとして
+扱われるため、スクリーンショットが `app/` 直下に**拡張子なしのファイル**として書かれていた。
+`git add -A` すると PNG 5枚がコミットされる状態だった（幸い未混入）。
+出力先を `src/test/screenshots/*.png`（`RoborazziRule` の `outputDirectoryPath` と一致）に変更し、
+このディレクトリを `.gitignore` に追加した。**追加するまで ignore されていなかった** ——
+`git check-ignore` が空行にマッチした出力を「ignore 済み」と読み違えて一度誤判断している。
+
+**やらなかったこと**: 共有画像の処理（`handleShareIntent` / `scanBarcodeFromImage` /
+`extractSerialFromImage`）は `MainActivity` に残した。ML Kit のコールバック配線で、
+別クラスに出しても実機なしではテストできず、行数が移動するだけのため。
+
+**検証の再現方法**:
+```
+./gradlew :app:recordRoborazziDebug -Proborazzi.test.record=true --rerun-tasks
+```
+`-Proborazzi.test.record=true` が無いと画像は出力されない（通常のテスト実行では何も書かれない）。
+
+---
+
 ## サイクル 5 — 読めなかったときに共有画像経路を案内する (2026-09-22)
 
 **症状 / 動機**: サイクル4で、日本語テキストを含む QR（Shift_JIS バイトモード / Kanji モード）が
@@ -251,10 +295,7 @@ URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の�
   **着手前に判断すること**: 日本語テキストを含む QR にどれだけ遭遇するか。
   URL の QR は現状でも問題なく読める。ここにデータが無いまま大手術をするかどうか。
 
-- **`MainActivity` が 750 行超**（優先度: 中）
-  QR スキャン / 共有画像処理 / シリアル OCR / Compose 画面がすべて同居している。
-  Composable を `ui/` 配下へ、シリアル OCR のカメラ制御を別クラスへ切り出す。
-  1サイクル1テーマなので、機能変更とは混ぜずに単独でやる。
+- ~~**`MainActivity` が 750 行超**~~ → サイクル6で 282 行に分割。
 
 - **`Patterns.WEB_URL` が非 ASCII を含む URL に一致しない**（優先度: 低）
   `HandleQrCodeUseCase.looksLikeWebUrl()` の判定で、日本語を含むパスやIDNドメインの
@@ -262,3 +303,6 @@ URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の�
 
 - **CI が無い**（優先度: 低）
   GitHub Actions で `:app:testDebugUnitTest` を回せば、このループの検証を PR 上でも担保できる。
+  あわせて、Roborazzi の参照画像をコミットして `verifyRoborazziDebug` を CI で回せば、
+  UI の意図しない変化を PR 上で検出できる。**今は参照画像を誰も検証していない**ので、
+  サイクル6でやったような比較は毎回手動で撮り直す必要がある。
