@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.RoborazziRule
 import com.ks.app.quickqrreader.ui.MainUiState
+import com.ks.app.quickqrreader.ui.QrScannerScreen
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
 import org.junit.Rule
 import org.junit.Test
@@ -38,7 +39,7 @@ class QrScannerScreenshotTest {
         
         composeTestRule
             .onRoot()
-            .captureRoboImage("QrScannerScreen")
+            .captureRoboImage("src/test/screenshots/QrScannerScreen.png")
     }
     
     @Test
@@ -51,7 +52,7 @@ class QrScannerScreenshotTest {
         
         composeTestRule
             .onRoot()
-            .captureRoboImage("QrScannerScreen_Dark")
+            .captureRoboImage("src/test/screenshots/QrScannerScreen_Dark.png")
     }
     
     @Test
@@ -64,7 +65,7 @@ class QrScannerScreenshotTest {
 
         composeTestRule
             .onRoot()
-            .captureRoboImage("QrScannerScreen_Scanning")
+            .captureRoboImage("src/test/screenshots/QrScannerScreen_Scanning.png")
     }
 
     @Test
@@ -86,7 +87,7 @@ class QrScannerScreenshotTest {
 
         composeTestRule
             .onRoot()
-            .captureRoboImage("QrScannerScreen_WithResultAndHistory")
+            .captureRoboImage("src/test/screenshots/QrScannerScreen_WithResultAndHistory.png")
     }
 
     @Test
@@ -99,6 +100,6 @@ class QrScannerScreenshotTest {
 
         composeTestRule
             .onRoot()
-            .captureRoboImage("QrScannerScreen_ModuleError")
+            .captureRoboImage("src/test/screenshots/QrScannerScreen_ModuleError.png")
     }
 }
