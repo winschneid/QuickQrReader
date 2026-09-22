@@ -5,6 +5,39 @@
 
 ---
 
+## サイクル 2 — UTF-8 以外の QR を rawBytes から読み直す (2026-09-22)
+
+**症状 / 動機**: Shift_JIS で焼かれた QR コードが「データがありません」「画像に QR コードが
+見つかりません」になる。国内で配られる QR には Shift_JIS のものが珍しくない。
+
+**原因**: ML Kit の `Barcode.rawValue` は内容を UTF-8 として解釈できないと null を返す。
+`MainActivity.startScanning()` はその null をそのまま `onScanSuccess()` に渡し、
+`scanBarcodeFromImage()` は `rawValue` が空のバーコードを候補から捨てていた。
+どちらも `Barcode.rawBytes`（生バイト列）を一度も見ていなかった。
+
+**変更**:
+- `domain/QrTextDecoder.kt` を新規追加。`rawValue` が空のときだけ `rawBytes` を
+  UTF-8 → windows-31j → Shift_JIS の順に**厳密デコード**（不正バイトを `?` で埋めず失敗させる）し、
+  制御文字だらけの結果は棄却する。`rawValue` が取れている場合は必ずそれをそのまま返す。
+- `MainActivity.kt`: カメラ経路と共有画像経路の両方をこのデコーダー経由に変更。
+
+**設計上の判断**: `rawValue` が非 null でも文字化けしている（ML Kit が ISO-8859-1 として
+解釈してしまう）ケースには手を出していない。判定はヒューリスティックにならざるを得ず、
+今読めている QR の解釈を壊すリスクがある。今回はアプリが完全に諦めている経路だけを対象にした。
+
+**検証**: `QrTextDecoderTest` を新規追加（13件）。Shift_JIS の日本語・半角カナ・日本語クエリ付き
+URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の棄却を確認。
+フォールバック経路を無効化すると 13件中 6件が落ちることを確認済み。
+ユニットテスト 77 件すべて成功、`assembleDebug` も成功。
+
+**未検証**: 実機での確認は未実施。特に `GmsBarcodeScanner`（Play 開発者サービス側のスキャナー）が
+`rawBytes` を詰めて返すかは端末依存の可能性がある。返さない場合このフォールバックは no-op で、
+従来どおりの挙動になるだけで害はない。
+
+**見送り**: 下の「次の候補」参照。
+
+---
+
 ## サイクル 1 — 読み取り後の自動再スキャンを止める (2026-09-22)
 
 **症状 / 動機**: QR を読んでリンク先アプリやブラウザが開いた後、戻るとすぐにスキャナーが
@@ -38,12 +71,13 @@
 
 ## 次の候補
 
-- **Shift_JIS など UTF-8 以外の QR を取りこぼす**（優先度: 高）
-  `MainActivity.startScanning()` は `barcode.rawValue` だけを見ており、
-  `scanBarcodeFromImage()` も `rawValue` が空のものを捨てている。ML Kit の `rawValue` は
-  UTF-8 としてデコードできないと null になるため、Shift_JIS で焼かれた日本語 QR が
-  「データがありません」になる。`barcode.rawBytes` を Shift_JIS(MS932) で解釈する
-  フォールバックを入れる。バイト列 → 文字列の純粋関数に切り出せばテストしやすい。
+- **`rawValue` が非 null のまま文字化けするケース**（優先度: 高 / **要実機検証**）
+  サイクル2の積み残し。ML Kit が Shift_JIS の QR を ISO-8859-1 として解釈すると、
+  null ではなく「読めているが意味不明な文字列」が返る。この場合 `QrTextDecoder` の
+  フォールバックは発動しない。着手する前に、実機と実物の Shift_JIS QR で
+  「`rawValue` が null になるのか、化けた文字列になるのか」を必ず確認すること。
+  確認せずにヒューリスティックを入れると、今読めている QR を壊す。
+  併せて `GmsBarcodeScanner` が `rawBytes` を返すかも実機で確認する。
 
 - **`flowWithLifecycle` + `receiveAsFlow` のイベント取りこぼしリスク**（優先度: 中）
   `Channel.receiveAsFlow()` は、受信済みで未 emit の要素をコレクター解除時に失う。
