@@ -80,6 +80,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+import com.ks.app.quickqrreader.domain.QrTextDecoder
 import com.ks.app.quickqrreader.domain.SerialExtractor
 import com.ks.app.quickqrreader.ui.MainUiState
 import com.ks.app.quickqrreader.ui.MainViewModel
@@ -206,7 +207,7 @@ class MainActivity : ComponentActivity() {
         viewModel.onScanStarted()
         scanner.startScan()
             .addOnSuccessListener { barcode ->
-                viewModel.onScanSuccess(barcode.rawValue)
+                viewModel.onScanSuccess(QrTextDecoder.decode(barcode.rawValue, barcode.rawBytes))
             }
             .addOnCanceledListener {
                 viewModel.onScanCanceled()
@@ -246,7 +247,9 @@ class MainActivity : ComponentActivity() {
         )
         imageScanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
-                val value = barcodes.firstOrNull { !it.rawValue.isNullOrEmpty() }?.rawValue
+                val value = barcodes.firstNotNullOfOrNull {
+                    QrTextDecoder.decode(it.rawValue, it.rawBytes)
+                }
                 if (value != null) {
                     viewModel.onScanSuccess(value)
                 } else {
