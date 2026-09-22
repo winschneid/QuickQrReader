@@ -151,10 +151,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 自動スキャンは初回起動時と外部アプリから戻ったときのみ。
-        // 無条件に開始すると、読み取り成功直後の onResume（スキャナーが閉じた瞬間）に
-        // 新しいスキャンが始まり、直後に起動したブラウザの上に GMS スキャナーが
-        // 被さって「ブラウザが一瞬で閉じてアプリに戻る」現象が起きる。
+        // 自動スキャンはコールドスタート時のみ。無条件に開始すると、読み取り成功直後の
+        // onResume（スキャナーが閉じた瞬間）に新しいスキャンが始まって起動したブラウザの上に
+        // GMS スキャナーが被さり、外部アプリから戻るたびにも勝手にカメラが開いて
+        // 読み取り結果や履歴を確認できなくなる。次のスキャンは待機画面のボタンから。
         if (viewModel.consumeAutoScanRequest()) {
             startScanning()
         }
@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity() {
             is MainViewModel.ViewEvent.StartActivity -> {
                 try {
                     startActivity(event.intent)
-                    viewModel.onLaunchSucceeded()
+                    viewModel.onExternalAppLaunched()
                 } catch (e: ActivityNotFoundException) {
                     Toast.makeText(this, getString(R.string.no_app_to_open), Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {

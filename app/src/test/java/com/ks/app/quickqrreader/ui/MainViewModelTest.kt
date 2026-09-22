@@ -199,19 +199,45 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `auto scan should be re-armed after external launch succeeded`() = testScope.runTest {
+    fun `auto scan should stay off for every resume after a handled scan`() = testScope.runTest {
         `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Success(testIntent))
-        viewModel.consumeAutoScanRequest() // 初回起動分を消費
+        viewModel.consumeAutoScanRequest() // コールドスタート分を消費
         viewModel.onScanStarted()
         viewModel.onScanSuccess(testQrCode) // スキャナーが閉じた直後の onResume を想定
+        advanceUntilIdle()
 
-        // StartActivity イベント未処理の間は自動再スキャンしない（ブラウザ競合バグの回帰防止）
+        // スキャナーが閉じた瞬間の onResume（ブラウザ競合バグの回帰防止）
         assertFalse(viewModel.consumeAutoScanRequest())
 
-        viewModel.onLaunchSucceeded() // Activity が startActivity に成功
+        viewModel.onExternalAppLaunched() // Activity が startActivity に成功
 
-        // 外部アプリから戻ってきた onResume では再スキャンする
-        assertTrue(viewModel.consumeAutoScanRequest())
+        // 外部アプリから戻ってきた onResume でも再スキャンしない。
+        // 待機画面に留まり、次のスキャンはユーザーがボタンで開始する。
+        assertFalse(viewModel.consumeAutoScanRequest())
+        assertFalse(viewModel.consumeAutoScanRequest())
+    }
+
+    @Test
+    fun `auto scan should stay off after the scanner was canceled`() = testScope.runTest {
+        viewModel.consumeAutoScanRequest() // コールドスタート分を消費
+        viewModel.onScanStarted()
+        viewModel.onScanCanceled()
+
+        // 戻る操作でスキャナーを閉じた後にまたスキャナーが開くと、アプリから抜けられない
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertFalse(viewModel.consumeAutoScanRequest())
+    }
+
+    @Test
+    fun `auto scan should stay off after a shared image was handled`() = testScope.runTest {
+        `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Success(testIntent))
+        viewModel.onImageScanStarted() // 共有画像から起動（カメラは使わない）
+        viewModel.onScanSuccess(testQrCode)
+        advanceUntilIdle()
+        viewModel.onExternalAppLaunched()
+
+        // 共有画像経由で開いたアプリから戻ってきてもカメラを起動しない
+        assertFalse(viewModel.consumeAutoScanRequest())
     }
 
     @Test
