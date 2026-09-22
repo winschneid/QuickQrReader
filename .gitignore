@@ -32,6 +32,3 @@ app/release/
 
 # Claude Code local config
 .claude/
-
-# Roborazzi が生成するスクリーンショット
-app/src/test/screenshots/

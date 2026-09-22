@@ -5,6 +5,44 @@
 
 ---
 
+## サイクル 8 — スクリーンショット検証を CI に載せる (2026-09-22)
+
+**動機**: サイクル6で、スクリーンショット比較はユニットテストに拾えないものを拾うと分かった
+（`MainActivity` 分割で画面が変わっていないことの根拠になった）。だが参照画像は1台のマシンにしか
+無く、確認のたびに手で撮り直す必要があった。
+
+**サイクル7で挙げた懸念は外れた**。「画像は OS・フォント・グラフィックス実装の差で変わり得るので、
+Windows で撮った画像は Linux ランナーで一致しないのではないか」と書いたが、測ったら違った。
+
+| 比較 | 結果 |
+|---|---|
+| ローカル（Windows） vs CI（ubuntu-latest） | 5枚すべてバイト単位で一致 |
+| CI 1回目 vs CI 2回目（同一コミット） | 5枚すべてバイト単位で一致 |
+
+サイクル7に書いた着手手順（いきなりコミットせず、まず CI で記録して artifact で取り出す）を
+そのまま実行した結果。手順のおかげで、憶測ではなく実測で判断できた。
+
+**変更**:
+- 参照画像5枚を `app/src/test/screenshots/` にコミット（サイクル6で入れた `.gitignore` は撤回）。
+- CI で `:app:testDebugUnitTest :app:verifyRoborazziDebug -Proborazzi.test.verify=true` を
+  **1回の Gradle 呼び出しで**実行。`verifyRoborazziDebug` はテストタスクに依存するため、
+  別々に実行するとテストが2回走って無駄になる。
+- 不一致時は比較画像（期待値・実際・差分が並んだもの）を artifact として保存。
+
+**検証**: 「落ちない検証」は無意味なので、実際に赤くなることを2段階で確認した。
+1. **ローカル**: 参照画像の1枚を別の画像に差し替えると `verifyRoborazziDebug` が FAILED になり、
+   `app/build/outputs/roborazzi/QrScannerScreen_compare.png` が生成される。
+2. **CI**: 同じ細工をコミットして push すると CI が failure になり、
+   `screenshot-diff` artifact から比較画像を取り出せた。細工を戻して緑に復帰も確認。
+
+**画像の更新方法**（UI を意図的に変えたとき）:
+```
+./gradlew :app:recordRoborazziDebug -Proborazzi.test.record=true --rerun-tasks
+```
+`-Proborazzi.test.record=true` が無いと画像は出力されない。
+
+---
+
 ## サイクル 7 — CI を入れる (2026-09-22)
 
 **動機**: 6サイクル回す間、テストの実行は毎回手動だった。誰かが覚えている間しか機能しない。
@@ -337,14 +375,7 @@ URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の�
 
 - ~~**CI が無い**~~ → サイクル7で導入。以下が積み残し。
 
-- **CI でスクリーンショットを検証する**（優先度: 中）
-  Roborazzi の参照画像をコミットして `verifyRoborazziDebug` を CI で回せば、
-  UI の意図しない変化を PR 上で検出できる。サイクル6でやったような比較を
-  毎回手動で撮り直す必要がなくなる。
-  **着手手順**: いきなり参照画像をコミットしない。まず CI 上で
-  `recordRoborazziDebug` を回して artifact として取得し、
-  (1) ローカル（Windows）で撮った画像と一致するか、(2) CI で2回撮って同じになるか
-  を確かめる。不一致なら参照画像は CI で記録したものを使う。
+- ~~**CI でスクリーンショットを検証する**~~ → サイクル8で導入。
 
 - **GitHub Actions の非推奨バージョン**（優先度: 低）
   `actions/checkout@v4` `actions/setup-java@v4` `actions/upload-artifact@v4` が
