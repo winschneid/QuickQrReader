@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+# 同じブランチへ立て続けに push したとき、古い実行は打ち切る。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: ユニットテストと debug ビルド
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # jvmToolchain(17) と sourceCompatibility 17 に合わせる。
+      - name: JDK 17 を用意
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # compileSdk 36 がランナーに無い場合に AGP が取得できるようにする。
+      - name: Android SDK を用意
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle を用意
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: ユニットテスト
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: debug ビルド
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      # 落ちたときに原因を追えるよう、成否によらずレポートを残す。
+      - name: テストレポートを保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+
+# release ビルドはここでは行わない。署名鍵とパスワードが必要で、
+# それらをリポジトリのシークレットに置く判断はまだしていないため。
+#
+# スクリーンショット（Roborazzi）の検証もまだ入れていない。
+# 参照画像をコミットして verifyRoborazziDebug を回せば UI の意図しない変化を
+# 検出できるが、画像は OS やフォント、グラフィックス実装の差で変わり得る。
+# ローカル（Windows）で撮った画像が CI（Linux）で一致する保証がないので、
+# まず CI 上で記録し、それが安定して再現するか確かめてからにする。
