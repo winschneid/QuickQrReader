@@ -10,6 +10,7 @@
     <string name="scanning_in_progress">スキャン中...</string>
     <string name="no_app_to_open">このコンテンツを開けるアプリが見つかりません</string>
     <string name="no_qr_found_in_image">画像からQRコードを読み取れませんでした</string>
+    <string name="hint_share_image_instead">読み取れない場合は、QRコードの画像をこのアプリに共有してみてください</string>
     <string name="tap_to_scan">スキャンを開始</string>
     <string name="last_scan_result">前回の読み取り結果</string>
     <string name="copy">コピー</string>

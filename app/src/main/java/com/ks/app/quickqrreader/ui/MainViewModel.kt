@@ -2,6 +2,7 @@ package com.ks.app.quickqrreader.ui
 
 import android.app.Application
 import android.content.Intent
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
@@ -42,7 +43,9 @@ data class PendingViewEvent(
 class MainViewModel(
     private val handleQrCodeUseCase: HandleQrCodeUseCase,
     private val scanHistoryRepository: ScanHistoryRepository,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    // スキャナーを開いていた時間を測るためだけの時刻源。テストで差し替える。
+    private val elapsedRealtimeMs: () -> Long = { SystemClock.elapsedRealtime() }
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -72,6 +75,10 @@ class MainViewModel(
     // ・共有画像から起動した場合はカメラを一度も使わないため、戻ってきて開くのは不自然。
     // 次のスキャンは待機画面のボタンからユーザーが明示的に開始する。
     private var autoScanOnResume = true
+
+    // カメラのスキャナーを開いた時刻。キャンセル時に「粘ったが読めなかった」のか
+    // 「開いてすぐ閉じた」のかを見分けるためだけに持つ。
+    private var cameraScanStartedAtMs: Long? = null
 
     sealed class ViewEvent {
         data class StartActivity(val intent: Intent) : ViewEvent()
@@ -120,6 +127,7 @@ class MainViewModel(
     }
 
     fun onScanStarted() {
+        cameraScanStartedAtMs = elapsedRealtimeMs()
         _uiState.update { it.copy(isScanning = true) }
     }
 
@@ -130,6 +138,7 @@ class MainViewModel(
     }
 
     fun onScanSuccess(qrCodeValue: String?) {
+        cameraScanStartedAtMs = null
         _uiState.update { it.copy(isScanning = false) }
         if (qrCodeValue != null) {
             handleScannedValue(qrCodeValue)
@@ -141,11 +150,25 @@ class MainViewModel(
     // キャンセル時は待機画面に戻るだけ。即時再スキャンするとユーザーが
     // 戻る操作でアプリを終了できなくなる。
     fun onScanCanceled() {
+        val openedAtMs = cameraScanStartedAtMs
+        cameraScanStartedAtMs = null
         _uiState.update { it.copy(isScanning = false) }
+
+        // GmsBarcodeScanner は読み取れたときしか完了しない。読めない QR に当てていると
+        // スキャナーは回り続け、ユーザーは戻る操作で諦めるしかない。失敗イベントが
+        // 存在しないので、「長く開いた末のキャンセル」を読めなかった合図として扱う。
+        //
+        // 日本語テキストを含む QR（Shift_JIS バイトモード / Kanji モード）はカメラ経路では
+        // 読めないが、共有画像経路なら読める。そこへ誘導する。
+        // 開いてすぐ閉じた場合は単に気が変わっただけなので黙って戻る。
+        if (openedAtMs != null && elapsedRealtimeMs() - openedAtMs >= STRUGGLED_SCAN_THRESHOLD_MS) {
+            emitEvent(ViewEvent.ShowToast(R.string.hint_share_image_instead))
+        }
     }
 
     fun onScanFailed(exception: Exception) {
         Log.e(TAG, "Scan failed", exception)
+        cameraScanStartedAtMs = null
         _uiState.update { it.copy(isScanning = false) }
         emitEvent(ViewEvent.ShowToast(R.string.scan_failed_simple))
     }
@@ -209,6 +232,10 @@ class MainViewModel(
 
     companion object {
         private const val TAG = "MainViewModel"
+
+        // これより長くスキャナーを開いた末にキャンセルしたら、読めなくて諦めたと見なす。
+        // 短すぎると「気が変わっただけ」の人にも案内が出るため、余裕を持たせている。
+        private const val STRUGGLED_SCAN_THRESHOLD_MS = 8_000L
 
         // Manual Factory pattern used instead of Hilt, as this app has no other DI requirements.
         fun Factory(application: Application): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
