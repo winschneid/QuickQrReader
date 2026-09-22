@@ -67,8 +67,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -85,8 +85,7 @@ import com.ks.app.quickqrreader.domain.SerialExtractor
 import com.ks.app.quickqrreader.ui.MainUiState
 import com.ks.app.quickqrreader.ui.MainViewModel
 import com.ks.app.quickqrreader.ui.theme.QuickQrReaderTheme
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -117,10 +116,20 @@ class MainActivity : ComponentActivity() {
 
         installModuleIfNeeded()
 
-        viewModel.eventFlow
-            .flowWithLifecycle(lifecycle, Lifecycle.State.STARTED)
-            .onEach { event -> handleViewEvent(event) }
-            .launchIn(lifecycleScope)
+        // 未処理イベントは uiState に残っているので、STARTED の間だけ取り出して処理する。
+        // 取り出し（onEventsHandled）と処理（handleViewEvent）の間に中断点を置かないこと。
+        // コレクターが解除されるのは中断点だけなので、この区間が途中で切れることはなく、
+        // 「イベントを消したのに処理しなかった」も「処理したのに消えていない」も起きない。
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    val pending = state.pendingEvents
+                    if (pending.isEmpty()) return@collect
+                    viewModel.onEventsHandled(pending.map { it.id })
+                    pending.forEach { handleViewEvent(it.event) }
+                }
+            }
+        }
 
         setContent {
             QuickQrReaderTheme {

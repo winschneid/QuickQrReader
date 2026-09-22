@@ -8,7 +8,6 @@ import com.ks.app.quickqrreader.domain.HandleQrCodeUseCase
 import com.ks.app.quickqrreader.domain.QrCodeProcessingResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -68,6 +67,14 @@ class MainViewModelTest {
         Dispatchers.resetMain()
     }
 
+    // 未処理イベントは Flow ではなく状態として残る。Activity が onEventsHandled() を
+    // 呼ぶまで消えないので、テストは「購読する」のではなく「状態を覗く」。
+    private val pendingEvents: List<MainViewModel.ViewEvent>
+        get() = viewModel.uiState.value.pendingEvents.map { it.event }
+
+    private val pendingEventIds: List<Long>
+        get() = viewModel.uiState.value.pendingEvents.map { it.id }
+
     @Test
     fun `onScanStarted should update uiState to isScanning true`() = testScope.runTest {
         viewModel.onScanStarted()
@@ -79,9 +86,6 @@ class MainViewModelTest {
         // Arrange
         `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Success(testIntent))
 
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
-
         // Act
         viewModel.onScanSuccess(testQrCode)
         advanceUntilIdle() // Allow coroutines to complete
@@ -89,11 +93,9 @@ class MainViewModelTest {
         // Assert
         assertFalse(viewModel.uiState.value.isScanning)
         verify(mockHandleQrCodeUseCase).invoke(testQrCode)
-        assertEquals(1, events.size)
-        assertTrue(events[0] is MainViewModel.ViewEvent.StartActivity)
-        assertEquals(testIntent, (events[0] as MainViewModel.ViewEvent.StartActivity).intent)
-
-        job.cancel()
+        assertEquals(1, pendingEvents.size)
+        assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.StartActivity)
+        assertEquals(testIntent, (pendingEvents[0] as MainViewModel.ViewEvent.StartActivity).intent)
     }
 
     @Test
@@ -121,9 +123,6 @@ class MainViewModelTest {
         // Arrange
         `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Error(testQrCode))
 
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
-
         // Act
         viewModel.onScanSuccess(testQrCode)
         advanceUntilIdle()
@@ -131,36 +130,29 @@ class MainViewModelTest {
         // Assert
         assertFalse(viewModel.uiState.value.isScanning)
         verify(mockHandleQrCodeUseCase).invoke(testQrCode)
-        assertEquals(1, events.size)
-        assertTrue(events[0] is MainViewModel.ViewEvent.ShowToast)
-        val toast = events[0] as MainViewModel.ViewEvent.ShowToast
+        assertEquals(1, pendingEvents.size)
+        assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.ShowToast)
+        val toast = pendingEvents[0] as MainViewModel.ViewEvent.ShowToast
         assertEquals(R.string.cannot_open, toast.messageRes)
         assertEquals(testQrCode, toast.formatArg)
-
-        job.cancel()
     }
 
     @Test
     fun `onScanSuccess with null QR code should emit ShowToast event for no data`() = testScope.runTest {
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
 
         viewModel.onScanSuccess(null)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isScanning)
-        assertEquals(1, events.size)
-        assertTrue(events[0] is MainViewModel.ViewEvent.ShowToast)
-        val toast = events[0] as MainViewModel.ViewEvent.ShowToast
+        assertEquals(1, pendingEvents.size)
+        assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.ShowToast)
+        val toast = pendingEvents[0] as MainViewModel.ViewEvent.ShowToast
         assertEquals(R.string.scan_no_data, toast.messageRes)
         assertNull(toast.formatArg)
-        job.cancel()
     }
 
     @Test
     fun `onScanCanceled should return to idle without emitting events`() = testScope.runTest {
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
 
         viewModel.onScanStarted()
         viewModel.onScanCanceled()
@@ -168,28 +160,23 @@ class MainViewModelTest {
 
         // キャンセルは待機画面に戻るだけ。トーストや再スキャンはしない。
         assertFalse(viewModel.uiState.value.isScanning)
-        assertTrue(events.isEmpty())
-        job.cancel()
+        assertTrue(pendingEvents.isEmpty())
     }
 
     @Test
     fun `onScanFailed should update uiState and emit generic failure toast`() = testScope.runTest {
         val testException = RuntimeException("Device unavailable")
 
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
-
         viewModel.onScanFailed(testException)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isScanning)
-        assertEquals(1, events.size)
-        assertTrue(events[0] is MainViewModel.ViewEvent.ShowToast)
-        val toast = events[0] as MainViewModel.ViewEvent.ShowToast
+        assertEquals(1, pendingEvents.size)
+        assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.ShowToast)
+        val toast = pendingEvents[0] as MainViewModel.ViewEvent.ShowToast
         // 例外メッセージはユーザーに出さずログに送るため定型文のみ
         assertEquals(R.string.scan_failed_simple, toast.messageRes)
         assertNull(toast.formatArg)
-        job.cancel()
     }
 
     @Test
@@ -250,18 +237,15 @@ class MainViewModelTest {
 
     @Test
     fun `onImageScanFailed should emit no-qr-found toast`() = testScope.runTest {
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
 
         viewModel.onImageScanStarted()
         viewModel.onImageScanFailed()
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.isScanning)
-        assertEquals(1, events.size)
-        val toast = events[0] as MainViewModel.ViewEvent.ShowToast
+        assertEquals(1, pendingEvents.size)
+        val toast = pendingEvents[0] as MainViewModel.ViewEvent.ShowToast
         assertEquals(R.string.no_qr_found_in_image, toast.messageRes)
-        job.cancel()
     }
 
     @Test
@@ -270,16 +254,75 @@ class MainViewModelTest {
         historyRepository.addEntry(testQrCode)
         historyRepository.addEntry("newer_entry")
 
-        val events = mutableListOf<MainViewModel.ViewEvent>()
-        val job = launch { viewModel.eventFlow.collect { events.add(it) } }
-
         viewModel.onHistoryItemSelected(testQrCode)
         advanceUntilIdle()
 
-        assertEquals(1, events.size)
-        assertTrue(events[0] is MainViewModel.ViewEvent.StartActivity)
+        assertEquals(1, pendingEvents.size)
+        assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.StartActivity)
         assertEquals(listOf(testQrCode, "newer_entry"), viewModel.uiState.value.history)
-        job.cancel()
+    }
+
+    // --- イベント配信の契約: Activity が処理したと伝えるまで消えない ---
+
+    @Test
+    fun `pending event should survive until the activity reports it handled`() = testScope.runTest {
+        `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Success(testIntent))
+
+        viewModel.onScanSuccess(testQrCode)
+        advanceUntilIdle()
+
+        // Activity が STOPPED で受け取れない間、イベントは状態に残り続ける。
+        // 何度読んでも消えない（購読の解除でイベントが失われないことの担保）。
+        assertEquals(1, pendingEvents.size)
+        assertEquals(1, pendingEvents.size)
+        assertEquals(1, pendingEvents.size)
+
+        viewModel.onEventsHandled(pendingEventIds)
+
+        assertTrue(pendingEvents.isEmpty())
+    }
+
+    @Test
+    fun `events should queue in order while unhandled`() = testScope.runTest {
+        viewModel.onScanSuccess(null) // scan_no_data
+        viewModel.onScanFailed(RuntimeException("boom")) // scan_failed_simple
+        advanceUntilIdle()
+
+        assertEquals(2, pendingEvents.size)
+        assertEquals(
+            listOf(R.string.scan_no_data, R.string.scan_failed_simple),
+            pendingEvents.map { (it as MainViewModel.ViewEvent.ShowToast).messageRes }
+        )
+    }
+
+    @Test
+    fun `onEventsHandled should only remove the reported events`() = testScope.runTest {
+        viewModel.onScanSuccess(null)
+        viewModel.onScanFailed(RuntimeException("boom"))
+        advanceUntilIdle()
+        val firstId = pendingEventIds.first()
+
+        viewModel.onEventsHandled(listOf(firstId))
+
+        // 2件目は未処理のまま残る（まとめて消して取りこぼす、が起きないこと）
+        assertEquals(1, pendingEvents.size)
+        assertEquals(
+            R.string.scan_failed_simple,
+            (pendingEvents[0] as MainViewModel.ViewEvent.ShowToast).messageRes
+        )
+    }
+
+    @Test
+    fun `onEventsHandled should ignore ids that are not pending`() = testScope.runTest {
+        viewModel.onScanSuccess(null)
+        advanceUntilIdle()
+
+        // 再配信されたイベントを二重に報告しても、未処理イベントを巻き込んで消さない
+        viewModel.onEventsHandled(listOf(9999L))
+        assertEquals(1, pendingEvents.size)
+
+        viewModel.onEventsHandled(emptyList())
+        assertEquals(1, pendingEvents.size)
     }
 
     @Test

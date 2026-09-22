@@ -15,21 +15,28 @@ import com.ks.app.quickqrreader.domain.HandleQrCodeUseCase
 import com.ks.app.quickqrreader.domain.QrCodeProcessingResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 data class MainUiState(
     val isScanning: Boolean = false,
     val isScanningSerial: Boolean = false,
     val lastScannedValue: String? = null,
     val history: List<String> = emptyList(),
-    val moduleError: String? = null
+    val moduleError: String? = null,
+    /** Activity がまだ処理していないイベント。処理されるまで状態として残り続ける。 */
+    val pendingEvents: List<PendingViewEvent> = emptyList()
+)
+
+/** 未処理イベント。`id` は Activity が「どれを処理したか」を伝えるためだけに使う。 */
+data class PendingViewEvent(
+    val id: Long,
+    val event: MainViewModel.ViewEvent
 )
 
 class MainViewModel(
@@ -41,11 +48,18 @@ class MainViewModel(
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
-    // Channel を使用してイベントをバッファリング。
-    // SharedFlow(replay=0) だと GMS スキャナー表示中（MainActivity が STOPPED）に
-    // emit されたイベントがコレクター停止中に消えるため。
-    private val _eventChannel = Channel<ViewEvent>(Channel.BUFFERED)
-    val eventFlow = _eventChannel.receiveAsFlow()
+    // イベントは Flow ではなく状態として持ち、Activity が処理し終えたと伝えてきたときだけ消す。
+    //
+    // 以前は Channel + receiveAsFlow() を flowWithLifecycle(STARTED) で購読していた。
+    // GMS スキャナー表示中（MainActivity が STOPPED）に emit されたイベントは
+    // Channel がバッファするので届くが、receiveAsFlow() は「チャネルから受け取ったが
+    // まだ emit していない要素」をコレクター解除時に取りこぼす。
+    // スキャナーが閉じる前後でライフサイクルが STARTED を跨ぐため、
+    // 「QR を読んだのに何も起きない」が起こり得た。
+    //
+    // 状態として持てば、コレクターが何度解除されても未処理イベントは残り、
+    // 次に STARTED になったときに再配信される。
+    private val eventIdGenerator = AtomicLong(0L)
 
     // onResume での自動スキャン許可フラグ。ViewModel の生存期間で一度だけ true になる。
     //
@@ -90,6 +104,21 @@ class MainViewModel(
         autoScanOnResume = false
     }
 
+    /**
+     * Activity が [MainUiState.pendingEvents] のイベントを処理し終えた。
+     *
+     * 呼び出し側は「取り出してから中断せずに処理する」こと。中断点を挟まずに
+     * このメソッドで消してから処理すれば、コレクターが解除されてもイベントは
+     * 失われず、かつ二重処理もされない。
+     */
+    fun onEventsHandled(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val handled = ids.toSet()
+        _uiState.update { state ->
+            state.copy(pendingEvents = state.pendingEvents.filterNot { it.id in handled })
+        }
+    }
+
     fun onScanStarted() {
         _uiState.update { it.copy(isScanning = true) }
     }
@@ -105,9 +134,7 @@ class MainViewModel(
         if (qrCodeValue != null) {
             handleScannedValue(qrCodeValue)
         } else {
-            viewModelScope.launch {
-                _eventChannel.send(ViewEvent.ShowToast(R.string.scan_no_data))
-            }
+            emitEvent(ViewEvent.ShowToast(R.string.scan_no_data))
         }
     }
 
@@ -120,18 +147,14 @@ class MainViewModel(
     fun onScanFailed(exception: Exception) {
         Log.e(TAG, "Scan failed", exception)
         _uiState.update { it.copy(isScanning = false) }
-        viewModelScope.launch {
-            _eventChannel.send(ViewEvent.ShowToast(R.string.scan_failed_simple))
-        }
+        emitEvent(ViewEvent.ShowToast(R.string.scan_failed_simple))
     }
 
     /** 共有画像から QR コードを読み取れなかった。 */
     fun onImageScanFailed(exception: Exception? = null) {
         exception?.let { Log.e(TAG, "Image scan failed", it) }
         _uiState.update { it.copy(isScanning = false) }
-        viewModelScope.launch {
-            _eventChannel.send(ViewEvent.ShowToast(R.string.no_qr_found_in_image))
-        }
+        emitEvent(ViewEvent.ShowToast(R.string.no_qr_found_in_image))
     }
 
     fun onHistoryItemSelected(value: String) {
@@ -139,7 +162,7 @@ class MainViewModel(
     }
 
     // カメラでのライブ文字列（応募シリアル）スキャンはQRスキャンと完全に独立したオプション機能。
-    // isScanning やイベントフローには一切触れない。
+    // isScanning や pendingEvents には一切触れない。
     fun onSerialScanStarted() {
         _uiState.update { it.copy(isScanningSerial = true) }
     }
@@ -170,21 +193,18 @@ class MainViewModel(
     }
 
     private fun processQrCode(qrCode: String) {
-        viewModelScope.launch {
-            when (val result = handleQrCodeUseCase(qrCode)) {
-                is QrCodeProcessingResult.Success -> {
-                    _eventChannel.send(ViewEvent.StartActivity(result.intent))
-                }
-                is QrCodeProcessingResult.Error -> {
-                    _eventChannel.send(ViewEvent.ShowToast(R.string.cannot_open, result.originalQrCode))
-                }
-            }
+        when (val result = handleQrCodeUseCase(qrCode)) {
+            is QrCodeProcessingResult.Success ->
+                emitEvent(ViewEvent.StartActivity(result.intent))
+            is QrCodeProcessingResult.Error ->
+                emitEvent(ViewEvent.ShowToast(R.string.cannot_open, result.originalQrCode))
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        _eventChannel.close()
+    private fun emitEvent(event: ViewEvent) {
+        _uiState.update {
+            it.copy(pendingEvents = it.pendingEvents + PendingViewEvent(eventIdGenerator.getAndIncrement(), event))
+        }
     }
 
     companion object {
