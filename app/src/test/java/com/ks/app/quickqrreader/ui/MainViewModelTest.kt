@@ -59,8 +59,11 @@ class MainViewModelTest {
         Dispatchers.setMain(testDispatcher)
 
         historyRepository = FakeScanHistoryRepository()
-        viewModel = MainViewModel(mockHandleQrCodeUseCase, historyRepository, testDispatcher)
+        viewModel = MainViewModel(mockHandleQrCodeUseCase, historyRepository, testDispatcher) { fakeClockMs }
     }
+
+    // スキャナーを開いていた時間を制御するための時刻源
+    private var fakeClockMs = 0L
 
     @After
     fun tearDown() {
@@ -260,6 +263,62 @@ class MainViewModelTest {
         assertEquals(1, pendingEvents.size)
         assertTrue(pendingEvents[0] is MainViewModel.ViewEvent.StartActivity)
         assertEquals(listOf(testQrCode, "newer_entry"), viewModel.uiState.value.history)
+    }
+
+    // --- 読めない QR に粘った末のキャンセルには、共有画像経路を案内する ---
+    // GmsBarcodeScanner は読み取れたときしか完了しないため、失敗イベントが存在しない。
+    // 「長く開いた末のキャンセル」だけが、読めなかったことを知る手がかりになる。
+
+    @Test
+    fun `canceling after a long scan should hint at sharing the image`() = testScope.runTest {
+        fakeClockMs = 1_000L
+        viewModel.onScanStarted()
+        fakeClockMs = 1_000L + 8_000L
+        viewModel.onScanCanceled()
+        advanceUntilIdle()
+
+        assertEquals(1, pendingEvents.size)
+        assertEquals(
+            R.string.hint_share_image_instead,
+            (pendingEvents[0] as MainViewModel.ViewEvent.ShowToast).messageRes
+        )
+    }
+
+    @Test
+    fun `canceling right away should stay silent`() = testScope.runTest {
+        fakeClockMs = 1_000L
+        viewModel.onScanStarted()
+        fakeClockMs = 1_000L + 500L // 開いてすぐ閉じた = 気が変わっただけ
+        viewModel.onScanCanceled()
+        advanceUntilIdle()
+
+        assertTrue(pendingEvents.isEmpty())
+    }
+
+    @Test
+    fun `a successful scan should not arm the hint for a later cancel`() = testScope.runTest {
+        `when`(mockHandleQrCodeUseCase.invoke(testQrCode)).thenReturn(QrCodeProcessingResult.Success(testIntent))
+        fakeClockMs = 1_000L
+        viewModel.onScanStarted()
+        fakeClockMs = 1_000L + 8_000L
+        viewModel.onScanSuccess(testQrCode)
+        advanceUntilIdle()
+        viewModel.onEventsHandled(pendingEventIds)
+
+        // 読み取れた後にキャンセルが来ても、案内は出ない
+        viewModel.onScanCanceled()
+        advanceUntilIdle()
+
+        assertTrue(pendingEvents.isEmpty())
+    }
+
+    @Test
+    fun `a cancel without a preceding scan should stay silent`() = testScope.runTest {
+        fakeClockMs = 60_000L // 起動から十分に時間が経っていても
+        viewModel.onScanCanceled()
+        advanceUntilIdle()
+
+        assertTrue(pendingEvents.isEmpty())
     }
 
     // --- イベント配信の契約: Activity が処理したと伝えるまで消えない ---
