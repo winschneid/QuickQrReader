@@ -28,10 +28,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # compileSdk 36 がランナーに無い場合に AGP が取得できるようにする。
-      - name: Android SDK を用意
-        uses: android-actions/setup-android@v3
-
+      # Android SDK は ubuntu-latest に同梱されているものを使う（ANDROID_HOME 設定済み）。
+      # compileSdk 36 が無ければ AGP が自動で取得する。
+      # android-actions/setup-android は使わない。廃止済みの "tools" パッケージを
+      # 入れようとして sdkmanager が exit 1 で落ちるため。
       - name: Gradle を用意
         uses: gradle/actions/setup-gradle@v4
 
