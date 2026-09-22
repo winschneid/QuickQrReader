@@ -5,6 +5,48 @@
 
 ---
 
+## サイクル 3 — イベントを Flow から状態に移し、取りこぼしを無くす (2026-09-22)
+
+**症状 / 動機**: 「QR を読み取ったのに何も起きない」が起こり得る経路が残っていた。
+再現条件が狭いため報告としては上がりにくいが、起きるとユーザーには原因が分からない。
+
+**原因**: `MainViewModel` は `Channel(BUFFERED)` + `receiveAsFlow()` でイベントを流し、
+`MainActivity` が `flowWithLifecycle(STARTED)` で購読していた。
+`Channel` は MainActivity が STOPPED の間もイベントをバッファするが、
+`receiveAsFlow()` には「チャネルから受け取ったがまだ emit していない要素は、
+コレクター解除時に失われる」という性質がある。
+GMS スキャナーが閉じる前後でライフサイクルが STARTED を跨いでコレクターが張り直されるため、
+ちょうどその瞬間のイベントが消え得た。
+
+**変更**:
+- `ui/MainViewModel.kt`: `Channel` / `eventFlow` を廃止し、未処理イベントを
+  `MainUiState.pendingEvents`（`PendingViewEvent(id, event)` のリスト）として保持する。
+  `onEventsHandled(ids)` を呼ばれたときだけ、報告された id のものを消す。
+  イベント送出が中断関数でなくなったため `processQrCode` の `viewModelScope.launch` も不要になった。
+- `MainActivity.kt`: `repeatOnLifecycle(STARTED)` で `uiState` を購読し、
+  未処理イベントを取り出す。**取り出し（`onEventsHandled`）と処理（`handleViewEvent`）の間に
+  中断点を置かない。** コルーチンが中断できるのは中断点だけなので、この区間は分割されず、
+  「消したのに処理しなかった」も「処理したのに消えていない」も起きない。
+  コレクターが解除された場合はイベントが状態に残り、次に STARTED になったとき再配信される。
+
+**検証**: `MainViewModelTest` に4件追加、既存のイベント検証はすべて
+「Flow を購読する」から「`uiState.pendingEvents` を覗く」方式へ書き換え。
+- `pending event should survive until the activity reports it handled`
+- `events should queue in order while unhandled`
+- `onEventsHandled should only remove the reported events`
+- `onEventsHandled should ignore ids that are not pending`
+
+`onEventsHandled` を「全部消す」に変えると上記のうち2件が落ちることを確認済み。
+ユニットテスト 81 件すべて成功、`assembleDebug` も成功。
+
+**残るリスク**: プロセス death では未処理イベントは失われる（`pendingEvents` は
+`SavedStateHandle` に載せていない）。Intent を復元して再実行するのは副作用の二重発火に
+つながるため、意図的に対象外にしている。
+
+**見送り**: 下の「次の候補」参照。
+
+---
+
 ## サイクル 2 — UTF-8 以外の QR を rawBytes から読み直す (2026-09-22)
 
 **症状 / 動機**: Shift_JIS で焼かれた QR コードが「データがありません」「画像に QR コードが
@@ -79,13 +121,7 @@ URL のデコード、`rawValue` 優先の維持、バイナリ/制御文字の�
   確認せずにヒューリスティックを入れると、今読めている QR を壊す。
   併せて `GmsBarcodeScanner` が `rawBytes` を返すかも実機で確認する。
 
-- **`flowWithLifecycle` + `receiveAsFlow` のイベント取りこぼしリスク**（優先度: 中）
-  `Channel.receiveAsFlow()` は、受信済みで未 emit の要素をコレクター解除時に失う。
-  GMS スキャナーが閉じる前後で `flowWithLifecycle(STARTED)` がコレクターを張り直すため、
-  `StartActivity` イベントが消えて「読み取ったのに何も起きない」になり得る。
-  状態として保持し、処理後に明示的に消費する方式を検討する。
-
-- **`MainActivity` が 733 行**（優先度: 中）
+- **`MainActivity` が 750 行超**（優先度: 中）
   QR スキャン / 共有画像処理 / シリアル OCR / Compose 画面がすべて同居している。
   Composable を `ui/` 配下へ、シリアル OCR のカメラ制御を別クラスへ切り出す。
   1サイクル1テーマなので、機能変更とは混ぜずに単独でやる。
